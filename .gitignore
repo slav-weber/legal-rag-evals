@@ -1,0 +1,32 @@
+# secrets & env
+.env
+*.local
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# node
+node_modules/
+dist/
+
+# data & models (never commit corpora or model weights)
+/data/
+models/
+*.gguf
+*.rtf
+*.zip
+
+# Data Atlas — derived bundle (large + PII-adjacent: never commit, always regenerate)
+tools/data-atlas/atlas.json
+tools/data-atlas/atlas.html
+
+# OS/IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

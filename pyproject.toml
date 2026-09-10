@@ -1,0 +1,67 @@
+[project]
+name = "legal-rag-evals"
+version = "0.1.0"
+description = "Retrieval pipeline, citation gate and evaluation harness of a Ukrainian statute RAG — a curated, verifiable extract of a private system."
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "openai>=1.40",
+    "python-dotenv>=1.0",
+    "httpx>=0.27",
+    "psycopg[binary]>=3.2",
+    # Thin API seam. FastAPI is the declared stack; uvicorn is the dev ASGI server
+    # (`uv run uvicorn api.main:app`). The test suite drives the API through TestClient
+    # on a stub backend — no live LLM in the suite.
+    "fastapi>=0.110",
+    "uvicorn>=0.30",
+    "striprtf>=0.0.32",
+    "pydantic>=2.13.4",
+    "duckdb>=1.5.4",
+    # The 8192-token chunk gate is decided by the REAL BGE-M3 tokenizer (XLM-RoBERTa SentencePiece),
+    # not by a proxy: measured chars/token min 2.135 / median 4.344, so a never-under-counting proxy
+    # would be 2x stricter than reality and would split units that fit. The tokenizer.json is pinned
+    # by revision + sha256 in pipelines/rada/chunk.py; both artefacts are open and cached locally.
+    "tokenizers>=0.20",
+    "huggingface-hub>=0.25",
+    # Ukrainian lemmatisation for the hybrid retriever's lemma channel (morphology:
+    # відстрочку ↔ відстрочка, which plain FTS misses without stemming — measured 1/5 → closed).
+    # pymorphy3 hard-requires pymorphy3-dicts-ru at install time; it is not used at runtime
+    # (lang="uk" works without it, verified in an isolated venv).
+    "pymorphy3>=2.0.6",
+    "pymorphy3-dicts-uk>=2.4.1.1",
+]
+
+[project.optional-dependencies]
+# Cross-encoder reranker (bge-reranker-v2-m3) over the RRF top-N, in-process on a CUDA GPU.
+# Optional: the test suite mocks the model, and `ml/reranker.py` degrades honestly when the
+# extra is not installed. Install with `uv sync --extra rerank`.
+# transformers is pinned <5: FlagEmbedding 1.4.0 calls tokenizer.prepare_for_model(), which
+# transformers 5.x removed (verified live; 4.57.x works). Model weights are pinned by sha256 +
+# revision in ml/reranker_reference.json.
+rerank = [
+    "torch>=2.6",
+    "flagembedding>=1.4",
+    "transformers>=4.44,<5",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.6",
+]
+
+# Not an installable package — a mono-repo of services and scripts (api/, ml/, pipelines/, eval/).
+[tool.uv]
+package = false
+
+# torch CUDA (cu124) wheels live on PyTorch's own index, not PyPI. `explicit = true` → only
+# packages routed here via [tool.uv.sources] use it; everything else stays on PyPI.
+[tool.uv.sources]
+torch = { index = "pytorch-cu124" }
+
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"

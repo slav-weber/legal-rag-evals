@@ -1,0 +1,1 @@
+{"bug_ref": "21.4-03", "kind": "mechanical", "question": "Що передбачає стаття 210 Кодексу України про адміністративні правопорушення?", "note": "Accepted answer 03 (exact route): cites 8073-10 ст.210. Mechanical golden — a regression if the pipeline stops citing ст.210 for this citation-lookup question → RED.", "expect": {"cited": [["8073-10", "ст.210"]], "abstain": false}}

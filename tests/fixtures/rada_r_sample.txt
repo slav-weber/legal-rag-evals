@@ -1,0 +1,11 @@
+# data.rada.gov.ua/laws/main/r.txt — recent-NPA-updates feed (SAMPLE FIXTURE, R-04)
+# Synthetic sample in the feed's token layout (<nreg> <date> <title>). It deliberately
+# contains canonical seed nregs — incl. 3633-20 (mobilisation law, the old F1 blind spot)
+# and 560-2024-п (cyrillic 'п') — so the matcher self-test proves that a production
+# "seed acts in feed: none" is an honest true-negative, not a broken matcher.
+1234-20	20260701	Про щось несуттєве
+3633-20	20260705	Про внесення змін щодо мобілізації та військової служби
+999-19	20260703	Інший акт поза периметром
+560-2024-п	20260702	Деякі питання військового обліку (постанова КМУ)
+13633-20	20260704	Акт-пастка: не повинен матчитися як 3633-20 (межа токена)
+z9999-99	20260706	Ще один акт поза периметром

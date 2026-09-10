@@ -102,11 +102,11 @@ suite drives it on a stub.
 by the lead agent and cross-checked by five independent agent reviews, never by the model under
 evaluation.
 
-- `retrieval_eval.py`: recall@k, precision@1 and MRR@k per question class (paraphrase, distinctive,
+- `eval/retrieval_eval.py`: recall@k, precision@1 and MRR@k per question class (paraphrase, distinctive,
   citation) and per layer (dense, hybrid, rerank), with one fail-loud validator for the gold format.
-- `retrieval_baseline.py`: freezes the top-k per question and turns a lost gold hit into a red
+- `eval/retrieval_baseline.py`: freezes the top-k per question and turns a lost gold hit into a red
   regression (exit 1).
-- `harness.py`: generation taxonomy (correct / null / wrong pick among candidates / hallucination /
+- `eval/harness.py`: generation taxonomy (correct / null / wrong pick among candidates / hallucination /
   precision drift), `sufficient@k`, a lint for unbacked action verbs, a golden regression corpus where
   a mechanical case is hard-red on one mismatch, and a two-pass replay at temperature 0 that measures
   set-flip noise first and sets the red threshold above it (0.45 after measuring 0.310 with zero

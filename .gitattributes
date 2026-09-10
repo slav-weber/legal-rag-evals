@@ -1,0 +1,7 @@
+# One line ending everywhere: the repository stores LF, checkouts get LF.
+* text=auto eol=lf
+
+# Binary and data files git must not touch.
+*.png binary
+*.jpg binary
+*.pdf binary

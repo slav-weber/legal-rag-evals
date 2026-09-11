@@ -264,6 +264,19 @@ defects in one change, descriptions that argue for the change, and the generic r
 `AGENTS.md`. Review is also the expensive layer: each review took 3 to 10 minutes of agent time,
 where the gates take seconds.
 
+### After the v3 fixes: every catalogue caught in full, all of them training data
+
+Twenty-two offline tests close the ten v3 misses, each pinning the invariant the bug broke: `as_of`
+reaches every channel, an answer without theses is regenerated, the tripwire holds at both DeepSeek
+entry points, a provider error propagates, a golden call that raises cannot leave the gate green,
+the parse run fails on an unclosed quote, every Rada request waits the polite pause, the previous
+freshness signal skips a failed probe's NULL, two amendment notes keep the text between them, and
+the ledger flags growth. Re-measured on the committed tree, the first catalogue scores 26 of 26, the
+held-out one 20 of 20 and v3 20 of 20
+([`reports/seeded-bugs-2026-09-11-v3-after-fixes.md`](reports/seeded-bugs-2026-09-11-v3-after-fixes.md)).
+All three are training data now; the next honest number needs a fourth catalogue, written blind
+after these fixes.
+
 ## What these numbers are not
 
 - The seeded-bug numbers measure the deterministic gates only. The review layer is measured

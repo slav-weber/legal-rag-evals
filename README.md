@@ -78,6 +78,9 @@ flag, tests skipped until the suite is green) and records which gate stops each 
   reviewer (ECC's code-reviewer) both found every bug, so at this size the result speaks for agent
   review, not for one prompt over the other. Protocol, raw outputs and grading:
   `verification/review_layer/`.
+- Tests for the ten v3 misses followed; all three catalogues are now caught in full (26, 20 and 20),
+  which makes them training data. A fourth catalogue, written blind after these fixes, is the next
+  honest number.
 
 Reports: `verification/reports/`; the method and every miss with its reason: `verification/README.md`.
 

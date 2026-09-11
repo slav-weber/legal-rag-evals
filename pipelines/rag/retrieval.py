@@ -156,7 +156,8 @@ def _rrf(channel_hits: dict[str, list[dict]], weights: dict[str, float], k: int)
     out = []
     for key, score in sorted(scores.items(), key=lambda kv: kv[1], reverse=True):
         h = dict(info[key]["hit"])
-        h.pop("dist", None); h.pop("rank", None)   # channel-local scores are meaningless post-fusion
+        h.pop("dist", None)
+        h.pop("rank", None)   # channel-local scores are meaningless post-fusion
         h["rrf_score"] = score
         h["channels"] = info[key]["channels"]        # {channel: rank} — which channel contributed
         out.append(h)

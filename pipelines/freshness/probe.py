@@ -17,7 +17,7 @@ from __future__ import annotations
 import hashlib
 import re
 import sys
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
 
 import httpx
@@ -225,7 +225,7 @@ def _write_report(rows: list[dict]) -> Path:
         lines.append(f"| {r['source_id']} | {r['probe_kind']} | {sig} | "
                      f"{'🟡 yes' if r['changed'] else 'no'} | {r['cadence']} | "
                      f"{r['slo']} | {r['status']} |")
-    lines.append(f"\n_notes:_\n")
+    lines.append("\n_notes:_\n")
     for r in rows:
         lines.append(f"- **{r['source_id']}**: {r['note']}")
     out.write_text("\n".join(lines) + "\n", encoding="utf-8")

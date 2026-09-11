@@ -77,7 +77,7 @@ def _render_pair(f, old_ed, new_ed, old, new, d) -> None:
     if d["changed"]:
         f.append("\n### Changed\n")
         for p in d["changed"]:
-            old_m, new_m = set(old[p]["markers"]), set(new[p]["markers"])
+            old_m = set(old[p]["markers"])
             fresh = [m for m in new[p]["markers"] if m not in old_m]
             delta = len(new[p]["text"]) - len(old[p]["text"])
             f.append(f"- {_label(p, new[p])} ({delta:+d} chars)")

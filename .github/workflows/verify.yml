@@ -1,0 +1,86 @@
+# Every push and pull request runs the gates the seeded-bug benchmark measures
+# (verification/gates.py), plus two checks that need external tools: a secret scan over the full
+# git history and an audit of the locked dependencies. Third-party actions are pinned by commit.
+name: verify
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 5 * * 1"   # weekly: a new advisory can turn the dependency audit red without a commit
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_VERSION: "0.11.29"    # the uv that wrote uv.lock
+  PYTHONUTF8: "1"
+
+jobs:
+  gates:
+    name: gates (tests, lint, eval)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4  # v10.1.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Install the locked environment (optional extras excluded)
+        run: uv sync --frozen
+      - name: unit-tests
+        run: uv run --frozen python -m verification.gates --only unit-tests --show-output
+      - name: lint
+        run: uv run --frozen python -m verification.gates --only lint --show-output
+      - name: eval-no-llm
+        run: uv run --frozen python -m verification.gates --only eval-no-llm --show-output
+      - name: eval-stub-gate
+        run: uv run --frozen python -m verification.gates --only eval-stub-gate --show-output
+
+  secrets:
+    name: secret scan (full history)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0              # every commit, not only the tip
+          persist-credentials: false
+      # The pre-commit hook scans staged changes only, and `pre-commit run --all-files` stages
+      # nothing, so CI runs its own scan of every commit with a pinned, checksum-verified binary.
+      - name: Install gitleaks 8.30.1
+        working-directory: ${{ runner.temp }}
+        run: |
+          V=8.30.1
+          curl -sSfLO "https://github.com/gitleaks/gitleaks/releases/download/v${V}/gitleaks_${V}_linux_x64.tar.gz"
+          curl -sSfLO "https://github.com/gitleaks/gitleaks/releases/download/v${V}/gitleaks_${V}_checksums.txt"
+          sha256sum --check --ignore-missing "gitleaks_${V}_checksums.txt"
+          tar -xzf "gitleaks_${V}_linux_x64.tar.gz" gitleaks
+      - name: Scan every commit
+        run: |
+          "$RUNNER_TEMP/gitleaks" git --redact --verbose .
+
+  dependencies:
+    name: dependency audit (uv.lock)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4  # v10.1.0
+        with:
+          version: ${{ env.UV_VERSION }}
+      - name: Export the locked requirements with hashes (optional extras excluded)
+        run: uv export --frozen --format requirements-txt --no-emit-project -o "$RUNNER_TEMP/requirements.txt"
+      - name: Audit against known vulnerabilities
+        run: uvx pip-audit@2.10.1 --disable-pip -r "$RUNNER_TEMP/requirements.txt"

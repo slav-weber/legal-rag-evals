@@ -66,9 +66,10 @@ explicit = true
 line-length = 100
 target-version = "py312"
 
-# The rule set CI (verification/gates.py) and pre-commit share: pyflakes (F) plus pycodestyle errors
-# and warnings (E, W); long lines stay a style matter. Explicit on purpose: recent ruff releases
-# enable more rule families by default, and an upgrade must not widen the gate silently.
+# The rule set CI (verification/gates.py) and pre-commit share: pyflakes (F), pycodestyle errors and
+# warnings (E, W) and one security rule, S104 (a server bound to every network interface); long
+# lines stay a style matter. Explicit on purpose: recent ruff releases enable more rule families by
+# default, and an upgrade must not widen the gate silently.
 [tool.ruff.lint]
-select = ["E", "F", "W"]
+select = ["E", "F", "W", "S104"]
 ignore = ["E501"]

@@ -232,6 +232,11 @@ class Budget(unittest.TestCase):
     def test_keeps_at_least_one_never_truncates(self):
         self.assertEqual([c["id"] for c in G._apply_budget([self._c("C1", 99999)], 10000)], ["C1"])
 
+    def test_candidate_that_fits_exactly_is_kept(self):
+        # the budget is inclusive: 5 000 + 5 000 tokens fill a 10 000-token budget exactly
+        cands = [self._c("C1", 5000), self._c("C2", 5000), self._c("C3", 1)]
+        self.assertEqual([c["id"] for c in G._apply_budget(cands, 10000)], ["C1", "C2"])
+
 
 class Render(unittest.TestCase):
     def test_two_layers_with_resolved_chips(self):
@@ -311,6 +316,17 @@ class Render(unittest.TestCase):
         for raw in ("<b>", "<i>", "<script>"):
             self.assertNotIn(raw, h)
         self.assertIn("&lt;script&gt;", h)
+
+    def test_escapes_markup_inside_a_citation_chip(self):
+        # a chip shows the resolved citation or, for an unresolved id, the id the model wrote:
+        # both are escaped like the prose around them.
+        res = {"dovidka": {"vysnovok": "v", "diyi": [],
+               "obgruntuvannya": [{"teza": "t", "citations": ["C1", "<img src=x onerror=1>"]}],
+               "abstain": False}, "resolved": {"C1": "Акт <b>X</b>, ст.1"}, "abstained": False}
+        h = G.render_dovidka(res)
+        self.assertNotIn("<b>X</b>", h)
+        self.assertNotIn("<img", h)
+        self.assertIn("&lt;b&gt;X&lt;/b&gt;", h)
 
     def test_strips_leaked_internal_cids(self):
         # internal IDs «C1..Ck» leaking into prose must NOT reach the user HTML.

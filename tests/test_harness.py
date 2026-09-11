@@ -329,6 +329,19 @@ class CliGate(unittest.TestCase):
         self.assertEqual(self._run("stub"), 0)              # oracle satisfies mechanical golden
         self.assertEqual(self._run("stub-abstain"), 1)            # golden RED-leg → exit 1
 
+    def test_hallucination_alone_turns_the_gate_red(self):
+        # the hallucination branch of the RED condition, isolated: the stub cites one id outside
+        # its candidate set while the golden corpus stays green.
+        import subprocess
+        import sys as _sys
+        root = str(Path(__file__).resolve().parents[1])
+        r = subprocess.run(
+            [_sys.executable, "-m", "eval.harness", "--mode", "gate", "--backend",
+             "stub-hallucinate", "--etalons", "eval/data/retrieval_gold_v0.jsonl"],
+            cwd=root, capture_output=True, text=True, encoding="utf-8", errors="replace")
+        self.assertEqual(r.returncode, 1)                    # a hallucination alone → exit 1
+        self.assertIn("golden-mechanical-RED=[]", r.stdout)  # golden green: that branch fired
+
 
 class NoiseGate(unittest.TestCase):
     """Noise-exit pin: the --mode noise exit-1 wiring, pinned via subprocess like CliGate.

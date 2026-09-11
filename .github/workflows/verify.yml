@@ -39,6 +39,8 @@ jobs:
         run: uv sync --frozen
       - name: unit-tests
         run: uv run --frozen python -m verification.gates --only unit-tests --show-output
+      - name: test-ratchet
+        run: uv run --frozen python -m verification.gates --only test-ratchet --show-output
       - name: lint
         run: uv run --frozen python -m verification.gates --only lint --show-output
       - name: eval-no-llm

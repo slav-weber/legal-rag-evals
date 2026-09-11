@@ -37,6 +37,8 @@ class Gate:
 GATES: tuple[Gate, ...] = (
     Gate("unit-tests", ("-m", "unittest", "discover", "-s", "tests", "-q"),
          "the offline test suite passes (model, embeddings and reranker are mocked)"),
+    Gate("test-ratchet", ("-m", "verification.test_ratchet"),
+         "no test was removed or newly skipped (floor: verification/test_inventory.json)"),
     Gate("lint", ("-m", "ruff", "check", "--no-cache", "--output-format", "concise", "."),
          "ruff finds nothing under the rule set in pyproject.toml"),
     Gate("eval-no-llm", ("-m", "eval.harness", "--no-llm", "--etalons", GOLD),

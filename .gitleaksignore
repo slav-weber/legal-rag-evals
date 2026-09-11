@@ -1,0 +1,5 @@
+# One documented exception to the secret scan (gitleaks over the full history, see
+# .github/workflows/verify.yml). pipelines/rada/chunk.py pins the sha256 of the open BAAI/bge-m3
+# tokenizer next to its revision, and the generic-api-key rule reads that digest as a key.
+# A fingerprint ignores this single finding only: any new secret-like string still stops CI.
+ca84dcd7b25875ee3bcbdee822df83d4ab3d50d5:pipelines/rada/chunk.py:generic-api-key:72

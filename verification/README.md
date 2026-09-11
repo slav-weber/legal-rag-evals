@@ -8,22 +8,40 @@ realistic bugs, one at a time.
 
 | Gate | What a pass proves | CI | pre-commit | Benchmark |
 |---|---|---|---|---|
-| `unit-tests` | the 280 offline tests pass (model, embeddings and reranker mocked) | every push | | yes |
-| `lint` | ruff finds nothing under the rule set in `pyproject.toml` (E, F, W) | every push | staged files | yes |
+| `unit-tests` | the 300 offline tests pass (model, embeddings and reranker mocked) | every push | | yes |
+| `test-ratchet` | every recorded test still exists and every skip is on the allowed list | every push | | yes |
+| `lint` | ruff finds nothing under the rule set in `pyproject.toml` (E, F, W and S104) | every push | staged files | yes |
 | `eval-no-llm` | the reference questions and the golden corpus validate: format, teeth, `bug_ref` | every push | | yes |
 | `eval-stub-gate` | the harness gate is GREEN on the oracle stub: no hallucination, no golden case RED | every push | | yes |
 | secret scan | no secret in any commit (gitleaks 8.30.1, checksum-verified, full history) | every push | staged changes | |
 | dependency audit | no known vulnerability in the packages pinned by `uv.lock` (pip-audit) | every push, weekly | | |
 
-The first four are defined once, in `gates.py`; CI calls them one by one and the benchmark runs all
-of them, so the benchmark measures exactly what CI enforces. The pre-commit gitleaks hook only sees
-staged changes (`pre-commit run --all-files` stages nothing), which is why CI scans the history
-itself.
+The first five are defined once, in `gates.py`; CI calls them one by one and the benchmark runs all
+of them, so the benchmark measures exactly what CI enforces.
+
+The pre-commit gitleaks hook only sees staged changes (`pre-commit run --all-files` stages
+nothing), which is why CI scans the history itself. The scan has one documented exception in
+`.gitleaksignore`: the sha256 pin of the open BGE-M3 tokenizer in `pipelines/rada/chunk.py`, which
+the generic-api-key rule reads as a key. It is ignored by the fingerprint of that single finding, so
+any new secret-like string still stops CI.
 
 ```bash
 uv run python -m verification.gates                  # every gate
 uv run python -m verification.gates --only lint      # one gate
 ```
+
+### The test ratchet
+
+A coding agent can turn a red suite green by deleting or skipping the tests that fail; bug `B26`
+below does exactly that. `test_ratchet.py` records every test id, and the allowed skips with their
+reasons, in `test_inventory.json`. A recorded test that disappears, or a skip that is not on the
+list, fails the gate. It tracks ids rather than counts for two reasons: a deleted test replaced by a
+trivial one keeps the count, and skips differ by platform. Seven politeness tests skip on Linux CI
+because the cross-process state lock is Windows-only (`msvcrt`), which also means **Linux CI does
+not exercise that lock**; it is tested on Windows only.
+
+Tests added, or a skip made on purpose: `uv run python -m verification.test_ratchet --update` in the
+same commit, where a reviewer sees the inventory change.
 
 ## The seeded-bug benchmark
 
@@ -38,26 +56,38 @@ applies the edits and runs every gate again. A bug counts as caught when at leas
 
 Rules that keep the number honest:
 
-- **Exact edits.** Every edit is a find → replace that must match the current code exactly once. When
-  the code moves on, the runner stops with an error instead of measuring a bug that no longer exists.
-- **A canary.** `B00` crashes a module at import. If the canary is not caught, the runner is broken
-  and nothing is reported.
-- **No tuning.** The catalogue was written before the first measured run. A miss stays in it as a
+- **Exact edits.** Every edit is a find → replace that must match the current code exactly once.
+  When the code moves on, the runner stops with an error instead of measuring a bug that no longer
+  exists.
+- **A canary.** Every catalogue has one bug that crashes a module at import. If the canary is not
+  caught, the runner is broken and nothing is reported.
+- **No tuning.** A catalogue is written before its first measured run, and a miss stays in it as a
   documented gap. The one bug derived from a measurement is `B26`: it plants `B01` and skips exactly
   the five tests that caught `B01` in a probe run.
-- **Provenance.** The report records the git revision, a sha256 digest of the measured tree and the
-  sha256 of the catalogue.
+- **A held-out catalogue.** Once tests are written against a catalogue's misses, that catalogue
+  becomes a training set: measuring it again shows that the fixes work, not that the gates
+  generalise. `seeded_bugs/catalogue_heldout.py` was written after the fixes by an agent that had
+  not seen `tests/` or the first catalogue; its number is the one that says how the gates do on bugs
+  nobody prepared for.
+- **Provenance.** Every report records the git revision and the state of the tree when the snapshot
+  was taken, a sha256 digest of the measured tree and the sha256 of the catalogue. Reports are
+  never overwritten; a second report on the same day needs its own `--label`.
 - **Isolation.** The gates run with API keys and database credentials removed from the environment
   and with `DATA_DIR` in the temporary directory.
 
 ```bash
 uv run python -m verification.seeded_bugs.run                  # full run, writes the report
 uv run python -m verification.seeded_bugs.run --only B06,B25   # a subset, prints only
+uv run python -m verification.seeded_bugs.run \
+    --catalogue verification/seeded_bugs/catalogue_heldout.py --label heldout
 ```
 
-## First measurement, 2026-09-11
+## Measurements
 
-**13 of 26 planted bugs caught.** Report: [`reports/seeded-bugs-2026-09-11.md`](reports/seeded-bugs-2026-09-11.md).
+### First measurement: 13 of 26
+
+Report: [`reports/seeded-bugs-2026-09-11.md`](reports/seeded-bugs-2026-09-11.md), measured on git
+`23ae162`.
 
 | Area | Planted | Caught |
 |---|---|---|
@@ -72,30 +102,94 @@ uv run python -m verification.seeded_bugs.run --only B06,B25   # a subset, print
 | test integrity | 1 | 0 |
 
 The split is the finding. Where the tests were written against incidents (the citation gate, the
-user-data tripwire, the exit-code convention) the gates stop 8 of 8. Retrieval was accepted by live
-measurement on the private corpus (recall@k per layer) rather than by tests, and the tests that
-need PostgreSQL stayed in the private repository; in this extract the gates stop 0 of 7 retrieval
-bugs.
+user-data tripwire, the exit-code convention) the gates stopped 8 of 8. Retrieval was accepted by
+live measurement on the private corpus (recall@k per layer) rather than by tests, and the tests that
+need PostgreSQL stayed in the private repository; in this extract the gates stopped 0 of 7
+retrieval bugs.
 
-## What the gates missed, and what would close each gap
+### What the first measurement missed, and what closed each gap
 
-| Gap | Bugs | Why nothing failed | What closes it |
+| Gap | Bugs | Why nothing failed | Closed by |
 |---|---|---|---|
-| Retrieval has no offline tests | B09–B15 | `search()` appears in the suite only as a mock; `_rrf`, `_run_channel`, `_act_mentions`, `_norm` and `_ART_RE` are never called | offline tests for the pure parts: fusion order under the weights, degradation flags, abbreviation case, apostrophe folding, article suffixes; a pin for the SQL scope clause |
-| A boundary nobody pinned | B05 | the budget test uses 4 000-token candidates against a 10 000-token budget, so "fits exactly" never occurs | one boundary test |
-| An escaping test one field short | B06 | the test puts markup into the prose fields, never into the citation string of a chip | markup inside a resolved citation |
-| A gate branch covered at unit level only | B25 | the taxonomy counts a hallucination, but the CLI test drives only the golden-RED branch of `--mode gate` | a hallucinating stub and an end-to-end test that it turns the gate RED |
-| Configuration outside any test | B22 | nothing calls `main()`, and E/F/W has no security rules | ruff `S104`: it flags the planted line and nothing in the current code (checked) |
-| An evaluation helper untested | B23 | `_gold_rank` runs only inside the live retrieval eval | a unit test with ст.21 against ст.210 |
-| Test integrity | B26 | by construction: the bypass and the skips land in one diff, so every gate stays green | a ratchet on the number of tests and skips, and a reviewer that reads test diffs |
+| Retrieval had no offline tests | B09–B15 | `search()` appeared in the suite only as a mock; `_rrf`, `_run_channel`, `_act_mentions`, `_norm` and `_ART_RE` were never called | `tests/test_retrieval_offline.py`: the scope clause, fusion under the calibrated weights, degradation flags, the reranker fallback, the exact route (article suffixes, abbreviation case, act binding, round-robin) and normalisation |
+| A boundary nobody pinned | B05 | the budget test used 4 000-token candidates against a 10 000-token budget, so "fits exactly" never occurred | `test_candidate_that_fits_exactly_is_kept` |
+| An escaping test one field short | B06 | markup went into the prose fields, never into the citation string of a chip | `test_escapes_markup_inside_a_citation_chip` |
+| A gate branch covered at unit level only | B25 | the CLI test drove only the golden-RED branch of `--mode gate` | a `stub-hallucinate` backend and `test_hallucination_alone_turns_the_gate_red` |
+| Configuration outside any test | B22 | nothing calls `main()`, and E/F/W had no security rule | ruff `S104` in the lint gate |
+| An evaluation helper untested | B23 | `_gold_rank` ran only inside the live retrieval eval | `tests/test_gold_rank.py` |
+| Test integrity | B26 | the bypass and the skips landed in one diff, so every gate stayed green | the test ratchet |
 
-## What this number is not
+### Re-measured after the fixes: 26 of 26, overfit by construction
 
-- It measures the deterministic gates only. The agent-review layer is not in it yet; it will be
-  measured against the same catalogue, which is the point of keeping the catalogue fixed.
-- It is not a quality score for the code. It is the share of these 26 defects that CI would stop.
-- The catalogue is small and was written by a coding agent, the same kind of author as the code, so
-  it may lean towards bugs its author can imagine. It is published so that it can be challenged.
+Report: [`reports/seeded-bugs-2026-09-11-v1-after-fixes.md`](reports/seeded-bugs-2026-09-11-v1-after-fixes.md),
+measured on git `6ce4ca0`.
+
+All thirteen misses are now caught. That shows the fixes work; it does not show that the gates
+generalise, because the tests were written knowing which bugs they had to stop. The held-out
+measurement answers that question.
+
+### Held-out: 12 of 20
+
+Report: [`reports/seeded-bugs-2026-09-11-heldout.md`](reports/seeded-bugs-2026-09-11-heldout.md),
+measured on git `fc5359e`.
+
+Six held-out bugs repeat a defect class of the first catalogue, found independently. The split
+below was fixed in the catalogue's commit message, before the measurement.
+
+| Held-out bugs | Planted | Caught |
+|---|---|---|
+| classes the first catalogue already had (H01, H07, H08, H09, H15, H16) | 6 | 6 |
+| new classes | 14 | 6 |
+| all | 20 | 12 |
+
+**6 of 14 on new classes is the number that describes the gates on bugs nobody prepared for.** Of
+those six, one is caught by a test from the gap round that was not aimed at a planted bug (the
+round-robin order of the exact route, H02); the other five by tests that predate this work and were
+written against real incidents (the tripwire, the politeness table, the units ledger, the citation
+of approved blocks, the dedupe of duplicate paths).
+
+| Area | Planted | Caught |
+|---|---|---|
+| api | 1 | 1 |
+| citation gate | 1 | 0 |
+| collection | 3 | 2 |
+| context budget | 1 | 0 |
+| data governance | 2 | 2 |
+| evaluation | 4 | 2 |
+| exit codes | 3 | 1 |
+| parsing | 1 | 1 |
+| rendering | 1 | 1 |
+| retrieval | 3 | 2 |
+
+What the gates missed:
+
+| Bug | Why nothing failed | What would close it |
+|---|---|---|
+| H05: an out-of-set id passes when a valid one is cited beside it | the injection test feeds exactly this answer but checks only that the fabricated id is not resolved, not that the answer was rejected and regenerated | assert the regeneration in that test; this is the citation gate's core invariant |
+| H03: reranked candidates ordered worst-first | no test checks the order `search()` returns after a successful rerank | a fake reranker and an ordering test |
+| H04: an over-budget candidate skipped instead of ending the list | in every budget test the sizes make `continue` and `break` agree | a large candidate followed by small ones |
+| H11: Rada's daily byte cap raised past the published limit | the real `CAP_BYTES` is pinned nowhere; one test uses its own stub value | pin the cap under the published 200 MB a day |
+| H17: the replay-noise threshold raised to 0.95 | the noise test drives a flip rate of 1.0, above any threshold, and nothing pins 0.45 | pin the measured threshold |
+| H18: a retrieval-baseline regression exits 0 | `eval/retrieval_baseline.py` has no tests | an exit-code test for the regression branch |
+| H19: reachability RED reported as a planned skip | the reachability tests do not look at the exit code | pin the RED → FAIL mapping |
+| H20: the card fetch exits 0 despite fetch failures | `fetch_cards` has no exit-code test; the suite mentions it in a comment only | the exit-code test the other collectors have |
+
+Five of the eight are exit codes and pinned constants: places where a change looks harmless and a
+test has to state the number on purpose.
+
+Closing these eight turns the held-out catalogue into training data too. The next honest number
+needs a new held-out catalogue, written after the next round of fixes by an agent that has not seen
+the tests.
+
+## What these numbers are not
+
+- They measure the deterministic gates only. The agent-review layer is not in them yet; it will be
+  measured against the same catalogues, which is the point of keeping them fixed.
+- They are not a quality score for the code. They are the share of these planted defects that CI
+  would stop.
+- The catalogues are small and were written by coding agents, the same kind of author as the code,
+  so they may lean towards bugs an agent can imagine. They are published so that they can be
+  challenged.
 - Each bug is a single planted change; real defects interact.
 - The secret scan and the dependency audit run in CI but are outside the benchmark: there is no
   code bug to plant for them.

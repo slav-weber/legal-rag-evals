@@ -1,0 +1,894 @@
+{
+  "meta": {
+    "date": "2026-09-11T13:09:14Z",
+    "label": "heldout",
+    "git_head": "fc5359e",
+    "uncommitted_changes": false,
+    "tree_sha256": "386627c6f69cf5937a1c1c5e1c9cef836a9934a35d9093a601908886670031dd",
+    "files": 128,
+    "catalogue": "verification/seeded_bugs/catalogue_heldout.py",
+    "catalogue_sha256": "c9e01461af46ca2a99f95d72bf259607a2c5c67b49ac3ec9100224d4bae82f38",
+    "python": "3.12.13",
+    "platform": "Windows",
+    "gates": [
+      "unit-tests",
+      "test-ratchet",
+      "lint",
+      "eval-no-llm",
+      "eval-stub-gate"
+    ]
+  },
+  "baseline": {
+    "unit-tests": {
+      "code": 0,
+      "seconds": 2.89
+    },
+    "test-ratchet": {
+      "code": 0,
+      "seconds": 2.77
+    },
+    "lint": {
+      "code": 0,
+      "seconds": 0.11
+    },
+    "eval-no-llm": {
+      "code": 0,
+      "seconds": 0.09
+    },
+    "eval-stub-gate": {
+      "code": 0,
+      "seconds": 0.09
+    }
+  },
+  "canary": {
+    "id": "H00",
+    "caught_by": [
+      "unit-tests",
+      "test-ratchet"
+    ]
+  },
+  "summary": {
+    "planted": 20,
+    "caught": 12,
+    "missed": [
+      "H03",
+      "H04",
+      "H05",
+      "H11",
+      "H17",
+      "H18",
+      "H19",
+      "H20"
+    ],
+    "by_area": {
+      "retrieval": {
+        "planted": 3,
+        "caught": 2
+      },
+      "context budget": {
+        "planted": 1,
+        "caught": 0
+      },
+      "citation gate": {
+        "planted": 1,
+        "caught": 0
+      },
+      "data governance": {
+        "planted": 2,
+        "caught": 2
+      },
+      "api": {
+        "planted": 1,
+        "caught": 1
+      },
+      "exit codes": {
+        "planted": 3,
+        "caught": 1
+      },
+      "collection": {
+        "planted": 3,
+        "caught": 2
+      },
+      "rendering": {
+        "planted": 1,
+        "caught": 1
+      },
+      "parsing": {
+        "planted": 1,
+        "caught": 1
+      },
+      "evaluation": {
+        "planted": 4,
+        "caught": 2
+      }
+    },
+    "caught_by_gate": {
+      "unit-tests": 11,
+      "lint": 1
+    },
+    "only_gate": {
+      "unit-tests": 11,
+      "lint": 1
+    }
+  },
+  "bugs": [
+    {
+      "id": "H01",
+      "area": "retrieval",
+      "title": "Temporal scope gate inverted: serves editions not yet in force",
+      "story": "Tidying the scope predicate, an agent 'corrects' the date direction to in_force_from >= as_of ('in force from this date onward'), inverting the gate so the current edition is dropped and a future/not-yet-in-force edition is served and cited.",
+      "canary": false,
+      "caught": true,
+      "caught_by": [
+        "unit-tests"
+      ],
+      "gates": {
+        "unit-tests": {
+          "code": 1,
+          "seconds": 2.89,
+          "evidence": [
+            "test_both_bounds_are_inclusive (test_retrieval_offline.ScopeClause)"
+          ]
+        },
+        "test-ratchet": {
+          "code": 0,
+          "seconds": 2.75,
+          "evidence": []
+        },
+        "lint": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        },
+        "eval-no-llm": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        },
+        "eval-stub-gate": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        }
+      }
+    },
+    {
+      "id": "H02",
+      "area": "retrieval",
+      "title": "Exact-lookup drops the natural-order re-sort of an article's leaves",
+      "story": "An agent deems the in-Python natkey sort redundant because the SQL already has ORDER BY unit_path, and removes it — reintroducing the lexicographic page the comment warns about (ст.N/п.10 before п.2; parts cut before the cap).",
+      "canary": false,
+      "caught": true,
+      "caught_by": [
+        "unit-tests"
+      ],
+      "gates": {
+        "unit-tests": {
+          "code": 1,
+          "seconds": 2.92,
+          "evidence": [
+            "test_round_robin_keeps_a_small_article_in_the_top (test_retrieval_offline.ExactRoute)"
+          ]
+        },
+        "test-ratchet": {
+          "code": 0,
+          "seconds": 2.72,
+          "evidence": []
+        },
+        "lint": {
+          "code": 0,
+          "seconds": 0.12,
+          "evidence": []
+        },
+        "eval-no-llm": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        },
+        "eval-stub-gate": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        }
+      }
+    },
+    {
+      "id": "H03",
+      "area": "retrieval",
+      "title": "Reranker ordering reversed: least-relevant candidates ranked first",
+      "story": "While refactoring the rerank step an agent flips reverse=True to reverse=False, so the cross-encoder orders candidates worst-first and the gold article is pushed down or out of the top-k handed to generation.",
+      "canary": false,
+      "caught": false,
+      "caught_by": [],
+      "gates": {
+        "unit-tests": {
+          "code": 0,
+          "seconds": 2.86,
+          "evidence": []
+        },
+        "test-ratchet": {
+          "code": 0,
+          "seconds": 2.77,
+          "evidence": []
+        },
+        "lint": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        },
+        "eval-no-llm": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        },
+        "eval-stub-gate": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        }
+      }
+    },
+    {
+      "id": "H04",
+      "area": "context budget",
+      "title": "Context budget skips an over-budget candidate instead of tail-dropping",
+      "story": "An agent 'packs the budget better' by changing break to continue, so a high-ranked large candidate is silently skipped while smaller lower-ranked ones fill in — C1..Ck are no longer the contiguous top set, and the dropped-report (which assumes a prefix) misreports what was cut.",
+      "canary": false,
+      "caught": false,
+      "caught_by": [],
+      "gates": {
+        "unit-tests": {
+          "code": 0,
+          "seconds": 2.86,
+          "evidence": []
+        },
+        "test-ratchet": {
+          "code": 0,
+          "seconds": 2.75,
+          "evidence": []
+        },
+        "lint": {
+          "code": 0,
+          "seconds": 0.12,
+          "evidence": []
+        },
+        "eval-no-llm": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        },
+        "eval-stub-gate": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        }
+      }
+    },
+    {
+      "id": "H05",
+      "area": "citation gate",
+      "title": "Citation gate tolerates an out-of-set id when any valid id is cited",
+      "story": "Aiming to 'not waste a good answer', an agent makes the out-of-set rejection conditional on there being no valid citation at all (if invalid and not resolved), so a dovidka that mixes a real candidate with a fabricated C-id is accepted and served instead of being regenerated — the code no longer arbitrates every id.",
+      "canary": false,
+      "caught": false,
+      "caught_by": [],
+      "gates": {
+        "unit-tests": {
+          "code": 0,
+          "seconds": 2.86,
+          "evidence": []
+        },
+        "test-ratchet": {
+          "code": 0,
+          "seconds": 2.75,
+          "evidence": []
+        },
+        "lint": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        },
+        "eval-no-llm": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        },
+        "eval-stub-gate": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        }
+      }
+    },
+    {
+      "id": "H06",
+      "area": "data governance",
+      "title": "User-data tripwire requires ALL fragments to be marked",
+      "story": "Refactoring the guard, an agent reads 'all fragments must be clean' and writes all() where any() was meant, so the tripwire fires only when every fragment carries the sentinel — a message mixing open-data text with one marked user fragment now passes to the external model.",
+      "canary": false,
+      "caught": true,
+      "caught_by": [
+        "unit-tests"
+      ],
+      "gates": {
+        "unit-tests": {
+          "code": 1,
+          "seconds": 2.89,
+          "evidence": [
+            "test_1_content_string (test_user_data_tripwire.Tripwire)",
+            "test_2_content_list_part (test_user_data_tripwire.Tripwire)",
+            "test_3_tool_call_arguments (test_user_data_tripwire.Tripwire)",
+            "test_4_top_level_string_field (test_user_data_tripwire.Tripwire)",
+            "test_5_deeply_nested (test_user_data_tripwire.Tripwire)",
+            "test_D_sentinel_in_dict_key (test_user_data_tripwire.Tripwire)"
+          ]
+        },
+        "test-ratchet": {
+          "code": 0,
+          "seconds": 2.78,
+          "evidence": []
+        },
+        "lint": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        },
+        "eval-no-llm": {
+          "code": 0,
+          "seconds": 0.08,
+          "evidence": []
+        },
+        "eval-stub-gate": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        }
+      }
+    },
+    {
+      "id": "H07",
+      "area": "data governance",
+      "title": "String walker fails open on uninspectable values",
+      "story": "An agent makes the scanner 'robust' by returning [] for a type it cannot reduce to text instead of raising, so a bytes/set/custom-object leaf that could hide a marked fragment is no longer inspected — the fail-closed guarantee becomes fail-open and user data can slip past the tripwire.",
+      "canary": false,
+      "caught": true,
+      "caught_by": [
+        "unit-tests"
+      ],
+      "gates": {
+        "unit-tests": {
+          "code": 1,
+          "seconds": 2.91,
+          "evidence": [
+            "test_B_bytes_value_rejected (test_user_data_tripwire.Tripwire)",
+            "test_C_set_value_rejected (test_user_data_tripwire.Tripwire)",
+            "test_G_object_with_sentinel_str_rejected (test_user_data_tripwire.Tripwire)",
+            "test_uninspectable_raises (test_user_data_tripwire.WalkStrings)"
+          ]
+        },
+        "test-ratchet": {
+          "code": 0,
+          "seconds": 2.75,
+          "evidence": []
+        },
+        "lint": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        },
+        "eval-no-llm": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        },
+        "eval-stub-gate": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        }
+      }
+    },
+    {
+      "id": "H08",
+      "area": "api",
+      "title": "API binds to all interfaces instead of localhost",
+      "story": "An agent 'makes the dev server reachable' by switching the bind host to 0.0.0.0, exposing the no-auth, no-rate-limit generate endpoint (and its trace seam) beyond 127.0.0.1.",
+      "canary": false,
+      "caught": true,
+      "caught_by": [
+        "lint"
+      ],
+      "gates": {
+        "unit-tests": {
+          "code": 0,
+          "seconds": 2.89,
+          "evidence": []
+        },
+        "test-ratchet": {
+          "code": 0,
+          "seconds": 2.75,
+          "evidence": []
+        },
+        "lint": {
+          "code": 1,
+          "seconds": 0.11,
+          "evidence": [
+            "S104"
+          ]
+        },
+        "eval-no-llm": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        },
+        "eval-stub-gate": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        }
+      }
+    },
+    {
+      "id": "H09",
+      "area": "exit codes",
+      "title": "Batch exit-code reducer uses numeric max instead of severity",
+      "story": "An agent 'simplifies' worst() to a bare max(codes), so reduction follows numeric value (STALE=3 > SKIP=2 > FAIL=1) instead of severity — a batch containing a FAIL(1) and a SKIP(2) returns SKIP, the exact 'a failure masquerades as a skip' trap the module warns against.",
+      "canary": false,
+      "caught": true,
+      "caught_by": [
+        "unit-tests"
+      ],
+      "gates": {
+        "unit-tests": {
+          "code": 1,
+          "seconds": 2.88,
+          "evidence": [
+            "test_worst_severity_not_bitwise (test_exitcodes.Convention)"
+          ]
+        },
+        "test-ratchet": {
+          "code": 0,
+          "seconds": 2.76,
+          "evidence": []
+        },
+        "lint": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        },
+        "eval-no-llm": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        },
+        "eval-stub-gate": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        }
+      }
+    },
+    {
+      "id": "H10",
+      "area": "collection",
+      "title": "Politeness pause removed for the bulk court registry",
+      "story": "An agent 'speeds up the backfill' by setting od.reyestr pause_s back to 0.0, removing the inter-request pause that was tightened to 0.2 precisely to smooth the burst to ~5 rps — the per-host politeness limit is now exceeded.",
+      "canary": false,
+      "caught": true,
+      "caught_by": [
+        "unit-tests"
+      ],
+      "gates": {
+        "unit-tests": {
+          "code": 1,
+          "seconds": 2.86,
+          "evidence": [
+            "test_policy_table_per_host (test_politeness.Politeness)"
+          ]
+        },
+        "test-ratchet": {
+          "code": 0,
+          "seconds": 2.77,
+          "evidence": []
+        },
+        "lint": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        },
+        "eval-no-llm": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        },
+        "eval-stub-gate": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        }
+      }
+    },
+    {
+      "id": "H11",
+      "area": "collection",
+      "title": "Rada daily byte cap inflated past the published limit",
+      "story": "An agent 'gives the collector headroom' and raises CAP_BYTES to 800 MB, breaking the self-cap that keeps the daily Rada download under the source's published 200 MB/day limit.",
+      "canary": false,
+      "caught": false,
+      "caught_by": [],
+      "gates": {
+        "unit-tests": {
+          "code": 0,
+          "seconds": 2.91,
+          "evidence": []
+        },
+        "test-ratchet": {
+          "code": 0,
+          "seconds": 2.73,
+          "evidence": []
+        },
+        "lint": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        },
+        "eval-no-llm": {
+          "code": 0,
+          "seconds": 0.08,
+          "evidence": []
+        },
+        "eval-stub-gate": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        }
+      }
+    },
+    {
+      "id": "H12",
+      "area": "collection",
+      "title": "Units ledger stops flagging deleted editions",
+      "story": "An agent adds a 'skip missing editions' guard to the ledger diff, so an edition that has vanished from the DB (a partial deletion or injection) is no longer reported as changed_or_deleted — the one check that catches a deletion above the count floors goes silent.",
+      "canary": false,
+      "caught": true,
+      "caught_by": [
+        "unit-tests"
+      ],
+      "gates": {
+        "unit-tests": {
+          "code": 1,
+          "seconds": 2.84,
+          "evidence": [
+            "test_edition_vanished_detected (test_units_ledger.LedgerDiff)"
+          ]
+        },
+        "test-ratchet": {
+          "code": 0,
+          "seconds": 2.75,
+          "evidence": []
+        },
+        "lint": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        },
+        "eval-no-llm": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        },
+        "eval-stub-gate": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        }
+      }
+    },
+    {
+      "id": "H13",
+      "area": "rendering",
+      "title": "Citation drops the block ordinal, colliding two approved documents",
+      "story": "An agent 'cleans up' the ЗАТВЕРДЖЕНО rendering, trusting the title alone and dropping the (затв. N) ordinal — so two blocks with the same title (e.g. both ПОРЯДОК in 560-2024-п) render one identical citation string, a collision that hollows the structural gate.",
+      "canary": false,
+      "caught": true,
+      "caught_by": [
+        "unit-tests"
+      ],
+      "gates": {
+        "unit-tests": {
+          "code": 1,
+          "seconds": 2.84,
+          "evidence": [
+            "test_number_is_rendered_even_for_a_lone_block (test_chunk.ApprovedBlockCitationCollision)",
+            "test_two_blocks_with_the_same_title_do_not_collide (test_chunk.ApprovedBlockCitationCollision)",
+            "test_approved_block_uses_its_title (test_chunk.CitationRender)"
+          ]
+        },
+        "test-ratchet": {
+          "code": 0,
+          "seconds": 2.77,
+          "evidence": []
+        },
+        "lint": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        },
+        "eval-no-llm": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        },
+        "eval-stub-gate": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        }
+      }
+    },
+    {
+      "id": "H14",
+      "area": "parsing",
+      "title": "Duplicate-path dedup no longer prefers the substantive unit",
+      "story": "An agent 'simplifies' the dedup sort to document order, so an empty repeal husk keeps the canonical ст.N path and the live re-issued article is pushed onto ст.N~2 — retrieval then serves the empty husk as the article.",
+      "canary": false,
+      "caught": true,
+      "caught_by": [
+        "unit-tests"
+      ],
+      "gates": {
+        "unit-tests": {
+          "code": 1,
+          "seconds": 2.86,
+          "evidence": [
+            "test_empty_husk_yields_the_canonical_path_to_the_live_article (test_parse_structure_t9.DedupePrefersSubstantive)"
+          ]
+        },
+        "test-ratchet": {
+          "code": 0,
+          "seconds": 2.74,
+          "evidence": []
+        },
+        "lint": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        },
+        "eval-no-llm": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        },
+        "eval-stub-gate": {
+          "code": 0,
+          "seconds": 0.08,
+          "evidence": []
+        }
+      }
+    },
+    {
+      "id": "H15",
+      "area": "evaluation",
+      "title": "Gate no longer reds on a citation-gate breach",
+      "story": "An agent 'tidies' the gate condition and drops the hallucination leg, so a resolved id outside the candidate set — the structural breach the gate exists to catch — no longer turns --mode gate red.",
+      "canary": false,
+      "caught": true,
+      "caught_by": [
+        "unit-tests"
+      ],
+      "gates": {
+        "unit-tests": {
+          "code": 1,
+          "seconds": 2.86,
+          "evidence": [
+            "test_hallucination_alone_turns_the_gate_red (test_harness.CliGate)"
+          ]
+        },
+        "test-ratchet": {
+          "code": 0,
+          "seconds": 2.72,
+          "evidence": []
+        },
+        "lint": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        },
+        "eval-no-llm": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        },
+        "eval-stub-gate": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        }
+      }
+    },
+    {
+      "id": "H16",
+      "area": "evaluation",
+      "title": "Recall hit-test prefix-matches, inflating recall",
+      "story": "An agent removes the '/' from the article prefix check as 'redundant', so ст.2 now matches ст.20, ст.23 and friends — a near-miss article is counted as a gold hit and recall@k / precision@1 read higher than reality.",
+      "canary": false,
+      "caught": true,
+      "caught_by": [
+        "unit-tests"
+      ],
+      "gates": {
+        "unit-tests": {
+          "code": 1,
+          "seconds": 2.86,
+          "evidence": [
+            "test_a_longer_number_is_a_different_article (test_gold_rank.GoldRank)"
+          ]
+        },
+        "test-ratchet": {
+          "code": 0,
+          "seconds": 2.75,
+          "evidence": []
+        },
+        "lint": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        },
+        "eval-no-llm": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        },
+        "eval-stub-gate": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        }
+      }
+    },
+    {
+      "id": "H17",
+      "area": "evaluation",
+      "title": "Replay-noise threshold raised far above the measured floor",
+      "story": "Finding the replay gate 'too flaky', an agent bumps the set-flip threshold to 0.95, well above the measured 0.310 noise floor, so genuine temperature-0 instability no longer trips the two-pass replay red.",
+      "canary": false,
+      "caught": false,
+      "caught_by": [],
+      "gates": {
+        "unit-tests": {
+          "code": 0,
+          "seconds": 2.88,
+          "evidence": []
+        },
+        "test-ratchet": {
+          "code": 0,
+          "seconds": 2.75,
+          "evidence": []
+        },
+        "lint": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        },
+        "eval-no-llm": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        },
+        "eval-stub-gate": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        }
+      }
+    },
+    {
+      "id": "H18",
+      "area": "evaluation",
+      "title": "Retrieval-baseline regression downgraded to a non-fatal warning",
+      "story": "An agent 'stops the baseline from failing CI on churn' by returning 0 from the lost-gold branch, so a question that used to retrieve its gold norm and now does not is printed but no longer fails the regression check.",
+      "canary": false,
+      "caught": false,
+      "caught_by": [],
+      "gates": {
+        "unit-tests": {
+          "code": 0,
+          "seconds": 2.89,
+          "evidence": []
+        },
+        "test-ratchet": {
+          "code": 0,
+          "seconds": 2.8,
+          "evidence": []
+        },
+        "lint": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        },
+        "eval-no-llm": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        },
+        "eval-stub-gate": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        }
+      }
+    },
+    {
+      "id": "H19",
+      "area": "exit codes",
+      "title": "Reachability RED reported as a planned skip",
+      "story": "An agent 'reduces noise' from the reachability watcher by mapping RED to SKIP, so a genuine routing/migration anomaly (data.rada serving HTML instead of JSON) exits 2 and cron treats a real source breakage as a benign defer.",
+      "canary": false,
+      "caught": false,
+      "caught_by": [],
+      "gates": {
+        "unit-tests": {
+          "code": 0,
+          "seconds": 2.91,
+          "evidence": []
+        },
+        "test-ratchet": {
+          "code": 0,
+          "seconds": 2.78,
+          "evidence": []
+        },
+        "lint": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        },
+        "eval-no-llm": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        },
+        "eval-stub-gate": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        }
+      }
+    },
+    {
+      "id": "H20",
+      "area": "exit codes",
+      "title": "Card fetch exits OK despite fetch failures",
+      "story": "An agent decides the cumulative editions floor is enough and drops failed_acts from the exit condition, so swallowed per-card fetch failures exit 0 as long as the floor is already met — exit 0 while errors happened.",
+      "canary": false,
+      "caught": false,
+      "caught_by": [],
+      "gates": {
+        "unit-tests": {
+          "code": 0,
+          "seconds": 2.92,
+          "evidence": []
+        },
+        "test-ratchet": {
+          "code": 0,
+          "seconds": 2.75,
+          "evidence": []
+        },
+        "lint": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        },
+        "eval-no-llm": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        },
+        "eval-stub-gate": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        }
+      }
+    }
+  ]
+}

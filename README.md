@@ -50,17 +50,25 @@ golden corpus without calling anything.
 
 [![verify](https://github.com/slav-weber/legal-rag-evals/actions/workflows/verify.yml/badge.svg)](https://github.com/slav-weber/legal-rag-evals/actions/workflows/verify.yml)
 
-Every push runs the same gates in CI: the test suite, ruff, the two offline harness gates, a secret
-scan over the full git history and an audit of the locked dependencies
-(`.github/workflows/verify.yml`, `verification/gates.py`).
+Every push runs the same gates in CI: the test suite and a ratchet that stops tests from being
+deleted or skipped, ruff, the two offline harness gates, a secret scan over the full git history
+and an audit of the locked dependencies (`.github/workflows/verify.yml`, `verification/gates.py`).
 
-How much do those gates actually catch? `verification/seeded_bugs/` plants 26 realistic defects
-one at a time (a bypassed citation gate, an off-by-one, a flipped comparison, a swallowed
-degradation flag, tests skipped until the suite is green) and records which gate stops each one.
-**First measurement, 2026-09-11: 13 of 26.** The gates stop 8 of 8 in the citation gate, the
-user-data tripwire and the exit codes, and 0 of 7 in retrieval, which this extract tests only
-through live evaluation. Report: `verification/reports/seeded-bugs-2026-09-11.md`; method and the
-gap list: `verification/README.md`.
+How much do those gates actually catch? `verification/seeded_bugs/` plants realistic defects one
+at a time (a bypassed citation gate, an off-by-one, a flipped comparison, a swallowed degradation
+flag, tests skipped until the suite is green) and records which gate stops each one.
+
+- **First measurement: 13 of 26.** 8 of 8 in the citation gate, the user-data tripwire and the exit
+  codes; 0 of 7 in retrieval, which this extract had tested only through live evaluation.
+- The gaps were closed with offline retrieval tests, boundary and escaping tests, an end-to-end gate
+  test, ruff S104 and the test ratchet. The same catalogue then scores 26 of 26, which shows only
+  that the fixes work.
+- **Held-out catalogue, written afterwards by an agent that never saw the tests: 12 of 20, and 6 of
+  14 on defect classes the first catalogue did not have.** The most instructive miss: a change that
+  lets the citation gate accept an answer citing a real candidate next to a fabricated one would
+  pass the tests.
+
+Reports: `verification/reports/`; the method and every miss with its reason: `verification/README.md`.
 
 ```bash
 uv run python -m verification.gates

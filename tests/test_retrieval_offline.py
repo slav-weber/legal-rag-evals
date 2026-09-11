@@ -11,9 +11,11 @@ reranker replaced by fakes.
 
 from __future__ import annotations
 
+import inspect
 import os
 import sys
 import unittest
+from contextlib import ExitStack
 from pathlib import Path
 from unittest import mock
 
@@ -166,6 +168,79 @@ class ExactRoute(unittest.TestCase):
         hits = R.exact_lookup(_FakeConn(rows), "ст.47 КАС і ст.210 КУпАП", limit=3)
         self.assertEqual([h["unit_path"] for h in hits], ["ст.47/ч.1", "ст.210", "ст.47/ч.2"])
         self.assertTrue(all(h["route"] == "exact" for h in hits))
+
+
+def _channel_recorder(name: str, seen: dict):
+    """A stand-in for one candidate channel. It records the as_of the real channel would receive,
+    bound against the real signature, so a date the caller drops reads as the default None (which
+    the scope clause turns into today's Kyiv date), and it finds nothing."""
+    signature = inspect.signature(getattr(R, name))
+
+    def channel(*args, **kwargs):
+        bound = signature.bind(*args, **kwargs)
+        bound.apply_defaults()
+        seen[name] = bound.arguments["as_of"]
+        return []
+    return channel
+
+
+class _AsOfConn:
+    """Records the as_of of every exact-route query; the cited article has no rows."""
+
+    def __init__(self):
+        self.as_of: list = []
+
+    def cursor(self):
+        return self
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def execute(self, sql, params):
+        self.as_of.append(params["as_of"])
+
+    def fetchall(self):
+        return []
+
+    def rollback(self):
+        pass
+
+
+class AsOfReachesEveryChannel(unittest.TestCase):
+    """Only editions in force on as_of are served, and the scope gate runs inside each channel, so
+    the requested date has to reach every one of them. A channel called without it falls back to
+    today: a question about an earlier date would be answered from the editions in force today."""
+
+    AS_OF = "2019-05-01"
+
+    def setUp(self):
+        patcher = mock.patch.object(R, "_TITLE_KEYS_CACHE", [])      # abbreviations only, no DB
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _channels(self, seen: dict) -> ExitStack:
+        stack = ExitStack()
+        for name in R.CHANNELS:
+            stack.enter_context(mock.patch.object(R, name, _channel_recorder(name, seen)))
+        return stack
+
+    def test_hybrid_gates_every_channel_on_the_requested_date(self):
+        seen: dict = {}
+        with self._channels(seen):
+            _fused, meta = R.hybrid(mock.Mock(), "строк оскарження постанови", as_of=self.AS_OF)
+        self.assertEqual(meta["degraded"], [])                       # every channel ran
+        self.assertEqual(seen, {name: self.AS_OF for name in R.CHANNELS})
+
+    def test_search_gates_every_route_on_the_requested_date(self):
+        seen: dict = {}
+        conn = _AsOfConn()
+        with self._channels(seen):
+            R.search(conn, "Що передбачає ст. 47 КАС?", as_of=self.AS_OF, k=5)
+        self.assertEqual(seen, {name: self.AS_OF for name in R.CHANNELS})
+        self.assertEqual(conn.as_of, [self.AS_OF])                   # and the exact route
 
 
 class Normalisation(unittest.TestCase):

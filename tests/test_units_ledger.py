@@ -44,6 +44,17 @@ class LedgerDiff(unittest.TestCase):
         self.assertEqual(d["changed_or_deleted"], {})
         self.assertEqual(d["new_editions"], ["3633-20|2026-08-01"])
 
+    def test_growth_inside_a_known_edition_detected(self):
+        # an injection into a known edition (a reparse that turns quoted amendment headings into
+        # phantom host articles) keeps every floor green; the ledger is an exact manifest, so a
+        # single extra unit is a count drift exactly like a missing one
+        live = dict(self.LEDGER)
+        live["3543-12|2026-07-31"] = 113
+        d = diff(self.LEDGER, live)
+        self.assertEqual(d["changed_or_deleted"],
+                         {"3543-12|2026-07-31": {"ledger": 112, "db": 113}})
+        self.assertEqual(d["new_editions"], [])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

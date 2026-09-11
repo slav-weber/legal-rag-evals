@@ -169,6 +169,41 @@ class ApiSeam(_HermeticData):
         self.assertNotIn("secret", r.text)                   # internal detail not leaked
 
 
+class RealGeneratePath(_HermeticData):
+    """The seam's own default generate path, with the database, retrieval and candidates faked and
+    only the provider call failing. The 503/500 tests above inject a generate() that raises; these
+    fail inside the real one, where an outage caught as an abstain would come back as a 200 that
+    tells the user the law gives no answer."""
+
+    HITS = [{"content_hash": "h1", "act": "X", "unit_path": "ст.1", "citation": "ст.1"}]
+    CANDS = [{"id": "C1", "citation": "Акт X, ст.1", "act": "X", "unit_path": "ст.1",
+              "content_hash": "h1", "text": "t1"}]
+
+    def _post_with_provider_raising(self, exc):
+        from contextlib import nullcontext
+        with mock.patch("pipelines.db.connect", lambda: nullcontext(None)), \
+             mock.patch("pipelines.rag.retrieval.search",
+                        lambda *a, **k: (self.HITS, {"route": "channels"})), \
+             mock.patch("pipelines.rag.generate.build_candidates",
+                        lambda conn, hits: (self.CANDS, {})), \
+             mock.patch("ml.llm_client.call_tool_deepseek", side_effect=exc):
+            return _client(None).post("/api/generate", json={"question": "щось"})
+
+    def test_provider_outage_inside_generate_is_503_not_an_abstain(self):
+        import httpx
+        import openai
+        r = self._post_with_provider_raising(
+            openai.APIConnectionError(request=httpx.Request("POST", "https://api.deepseek.com")))
+        self.assertEqual(r.status_code, 503)
+        self.assertEqual(r.json()["error"], "generation_unavailable")
+
+    def test_provider_failure_inside_generate_is_500_not_an_abstain(self):
+        # a missing key or a truncated tool call raises RuntimeError inside the client
+        r = self._post_with_provider_raising(RuntimeError("DEEPSEEK_API_KEY not set"))
+        self.assertEqual(r.status_code, 500)
+        self.assertEqual(r.json()["error"], "internal_error")
+
+
 class Lifespan(_HermeticData):
     """Reranker pin at STARTUP — drift refuses to start, a load failure starts degraded."""
 

@@ -21,7 +21,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from pipelines.rada.parse_structure import (  # noqa: E402
-    GLAVA_RE, ROMAN_SECTION_RE, Unit, _dedupe, _norm_section, _quote_depths,
+    GLAVA_RE, ROMAN_SECTION_RE, Unit, _clean, _dedupe, _markers, _norm_section, _quote_depths,
     _quote_eof_warn, _roman_sections, parse_edition, reconcile_runs)
 
 
@@ -606,6 +606,50 @@ class QuoteEofGate(unittest.TestCase):
 
     def test_corpus_shape_without_quotes_is_silent(self):
         self.assertIsNone(_quote_eof_warn(['Стаття 1. Назва', '', '1. Текст.', '']))
+
+
+class AmendmentNotes(unittest.TestCase):
+    """Amendment notes {…} leave the clean text as provenance, and only the notes leave it. An
+    article amended twice carries two separate notes; a pattern that ran from the first «{» to
+    the last «}» would delete the legal text between them without a trace and store the norm
+    inside one giant marker. Two shapes: notes on their own lines, and two inline notes in one
+    sentence."""
+
+    SPANS = {
+        "notes on their own lines": ("\n".join([
+            "Стаття 7. Строк звернення",
+            "",
+            "1. Скарга подається протягом десяти днів.",
+            "",
+            "{Частина перша із змінами, внесеними згідно із Законом № 1234-IX від 01.01.2024}",
+            "",
+            "2. Строк не поширюється на військовослужбовців у районах бойових дій.",
+            "",
+            "{Статтю 7 доповнено частиною другою згідно із Законом № 5678-IX від 02.02.2025}",
+            "",
+        ]), "2. Строк не поширюється на військовослужбовців у районах бойових дій."),
+        "two notes in one sentence": (
+            "3. Рішення оскаржується до суду {Із змінами, внесеними згідно із Законом № 1234-IX} "
+            "або до вищого органу {Із змінами, внесеними згідно із Законом № 5678-IX}.",
+            "або до вищого органу"),
+    }
+
+    def test_text_between_two_notes_is_kept(self):
+        for shape, (span, between) in self.SPANS.items():
+            with self.subTest(shape):
+                clean = _clean(span)
+                self.assertIn(between, clean)              # RED under a greedy pattern
+                self.assertNotIn("{", clean)
+                self.assertNotIn("Законом", clean)         # the notes themselves are gone
+
+    def test_both_notes_become_markers(self):
+        for shape, (span, between) in self.SPANS.items():
+            with self.subTest(shape):
+                markers = _markers(span)
+                self.assertEqual(len(markers), 2)          # a greedy pattern finds one
+                self.assertTrue(all(m.startswith("{") and m.endswith("}") and "Законом" in m
+                                    for m in markers))
+                self.assertFalse(any(between in m for m in markers))   # no norm in a marker
 
 
 if __name__ == "__main__":

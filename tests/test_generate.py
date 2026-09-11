@@ -195,6 +195,63 @@ class Gate(unittest.TestCase):
         self.assertEqual(set(res["resolved"]), {"C1"})
         self.assertFalse(res["abstained"])
 
+    def test_answer_without_theses_is_regenerated_then_abstains(self):
+        # A conclusion and practical steps with no legal theses cite nothing, so they are not an
+        # answer either: exempting them would let the model dodge the gate by leaving
+        # obgruntuvannya empty and answering from its own memory. Empty or missing, the theses
+        # are rejected and regenerated, and the run ends in the honest abstain.
+        base = {"vysnovok": "Строк оскарження — десять днів.",
+                "diyi": ["Подайте скаргу до суду."], "abstain": False}
+        for label, answer in (("empty", {**base, "obgruntuvannya": []}), ("missing", base)):
+            with self.subTest(theses=label):
+                res, ncalls = self._run([answer], max_retries=2)
+                self.assertTrue(res["abstained"])                  # never served as an answer
+                self.assertEqual(ncalls, 3)                        # initial + 2 regenerations
+                self.assertEqual(res["abstain_reason"], "no valid citations after retries")
+                self.assertEqual(res["resolved"], {})
+
+    def _generate_with(self, call_tool):
+        with mock.patch("pipelines.rag.retrieval.search",
+                        lambda *a, **k: (self.HITS, {"route": "channels"})), \
+             mock.patch.object(G, "build_candidates", lambda conn, hits: (self.CANDS, {})), \
+             mock.patch("ml.llm_client.call_tool_deepseek", call_tool):
+            return G.generate(None, "q")
+
+    def test_provider_error_propagates_instead_of_abstaining(self):
+        # Without the model there is no dovidka. A provider error must reach the caller, so the
+        # API can answer 503 (the provider) or 500 (anything else). Turned into the abstain, an
+        # outage would tell the user that the law gives no answer, and neither monitoring nor a
+        # live harness run would see an error.
+        import httpx
+        import openai
+        request = httpx.Request("POST", "https://api.deepseek.com")
+        for exc in (openai.APIConnectionError(request=request),
+                    RuntimeError("DeepSeek tool-args JSON truncated (finish_reason=length)")):
+            with self.subTest(error=type(exc).__name__):
+                with self.assertRaises(type(exc)):
+                    self._generate_with(mock.Mock(side_effect=exc))
+
+    def test_provider_error_during_a_regeneration_propagates(self):
+        # the same on a retry: the first answer cites an id outside the set, the regeneration
+        # call fails, and the failure propagates instead of ending as "no valid citations"
+        import httpx
+        import openai
+        from ml.llm_client import ToolResult
+        request = httpx.Request("POST", "https://api.deepseek.com")
+        bad = {"vysnovok": "v", "obgruntuvannya": [{"teza": "t", "citations": ["C9"]}],
+               "abstain": False}
+        calls = {"n": 0}
+
+        def _fn(messages, tool, **kw):
+            calls["n"] += 1
+            if calls["n"] > 1:
+                raise openai.APITimeoutError(request=request)
+            return ToolResult(args=bad, model="m", prompt_tokens=1, completion_tokens=1,
+                              total_tokens=2, cache_hit_tokens=0, request_id="rid1")
+        with self.assertRaises(openai.APITimeoutError):
+            self._generate_with(_fn)
+        self.assertEqual(calls["n"], 2)                    # it failed on the regeneration
+
 
 class Dedup(unittest.TestCase):
     """kind-aware dedup: a container subsumes its leaves; a leaf outranking its container wins;

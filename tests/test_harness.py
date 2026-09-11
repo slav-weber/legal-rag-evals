@@ -7,8 +7,10 @@ subprocess on stub backends only.
 
 from __future__ import annotations
 
+import io
 import sys
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from unittest import mock
 
@@ -173,6 +175,55 @@ class Sabotage(unittest.TestCase):
         bad = {"candidates": [], "resolved": {}, "abstained": False, "dovidka": {}}
         gr = H.run_golden([case], lambda row: bad)                  # expected citation not produced
         self.assertEqual(gr["mechanical_red"], ["x"])          # gate reddens on mechanical golden
+
+
+class _PipelineDown(RuntimeError):
+    """Raised by a fake backend: the generation pipeline is down."""
+
+
+class GoldenCallRaises(unittest.TestCase):
+    """A golden case is a regression check, so a golden call that raises is a failed check, never a
+    skipped one. When the live pipeline is down, or a regression makes generate() raise on a
+    golden question, --mode gate must not print GREEN and exit 0 on a run that checked nothing.
+    The exception escaping the run is an honest failure; a silent skip is not."""
+
+    GOLD = Path(__file__).resolve().parents[1] / "eval" / "data" / "retrieval_gold_v0.jsonl"
+
+    def test_run_golden_does_not_skip_a_case_whose_call_raises(self):
+        case = {"bug_ref": "x", "kind": "mechanical", "question": "q",
+                "expect": {"cited": [["A", "ст.1"]]}}
+
+        def down(row):
+            raise _PipelineDown("generation unavailable")
+        try:
+            gr = H.run_golden([case], down)
+        except _PipelineDown:
+            return                                      # escaped: nothing can print GREEN
+        self.assertEqual(gr["mechanical_red"], ["x"])   # or else it has to count as RED
+
+    def test_gate_is_not_green_when_the_golden_calls_raise(self):
+        golden = {c["question"] for c in H.load_golden()}
+        oracle, raised = H._stub_run, []
+
+        def backend(row):                   # the reference questions answer, the golden ones raise
+            if row["question"] in golden:
+                raised.append(row["question"])
+                raise _PipelineDown("generation unavailable")
+            return oracle(row)
+        argv = ["eval.harness", "--mode", "gate", "--backend", "stub",
+                "--etalons", str(self.GOLD)]
+        out = io.StringIO()
+        with mock.patch.object(sys, "argv", argv), \
+             mock.patch.object(H, "_stub_run", backend), \
+             mock.patch.object(H, "write_run", return_value=Path("run.jsonl")), \
+             redirect_stdout(out):
+            try:
+                code = H.main()
+            except _PipelineDown:
+                code = None                             # escaped: no verdict was printed
+        self.assertTrue(raised)                         # the golden calls really raised
+        self.assertNotEqual(code, 0)
+        self.assertNotIn("GATE [GREEN]", out.getvalue())
 
 
 class Noise(unittest.TestCase):

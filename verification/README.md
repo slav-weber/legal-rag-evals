@@ -8,7 +8,7 @@ realistic bugs, one at a time.
 
 | Gate | What a pass proves | CI | pre-commit | Benchmark |
 |---|---|---|---|---|
-| `unit-tests` | the 314 offline tests pass (model, embeddings and reranker mocked) | every push | | yes |
+| `unit-tests` | the 336 offline tests pass (model, embeddings and reranker mocked) | every push | | yes |
 | `test-ratchet` | every recorded test still exists and every skip is on the allowed list | every push | | yes |
 | `lint` | ruff finds nothing under the rule set in `pyproject.toml` (E, F, W and S104) | every push | staged files | yes |
 | `eval-no-llm` | the reference questions and the golden corpus validate: format, teeth, `bug_ref` | every push | | yes |

@@ -9,6 +9,7 @@ from __future__ import annotations
 import sys
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -100,6 +101,65 @@ class Tripwire(unittest.TestCase):
                 return mark_user_data("pii")
         with self.assertRaises(ValueError):
             _guard([{"role": "user", "content": "ok", "obj": _Sneaky()}])
+
+
+class EntryPoints(unittest.TestCase):
+    """The tripwire holds where the payload leaves, not only inside the guard. Every DeepSeek entry
+    point (call_tool_deepseek on the generation path, and chat_deepseek) refuses a marked, flagged
+    or uninspectable payload with ValueError, and the client never sees it: a guard that is tested
+    only on its own can be wrapped, logged and skipped at the call site. The SDK client is replaced
+    by a recorder; no request leaves the machine."""
+
+    TOOL = {"name": "pravova_dovidka", "description": "",
+            "parameters": {"type": "object", "properties": {"vysnovok": {"type": "string"}}}}
+
+    def setUp(self):
+        self.sent: list = []                    # the payloads that reached the client
+        client = SimpleNamespace(chat=SimpleNamespace(
+            completions=SimpleNamespace(create=self._create)))
+        for patcher in (mock.patch.object(L, "_DEEPSEEK_API_KEY", "test-key"),
+                        mock.patch.object(L, "OpenAI", lambda **kw: client)):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def _create(self, **kw):
+        self.sent.append(kw["messages"])
+        call = SimpleNamespace(id="tc1", function=SimpleNamespace(arguments='{"vysnovok": "v"}'))
+        return SimpleNamespace(
+            id="rid", model="m",
+            choices=[SimpleNamespace(message=SimpleNamespace(content="v", tool_calls=[call]),
+                                     finish_reason="tool_calls")],
+            usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1, total_tokens=2,
+                                  prompt_cache_hit_tokens=0))
+
+    def _entry_points(self, messages) -> dict:
+        return {"call_tool_deepseek": lambda: L.call_tool_deepseek(messages, self.TOOL),
+                "chat_deepseek": lambda: L.chat_deepseek(messages)}
+
+    def _assert_refused(self, messages):
+        for name, send in self._entry_points(messages).items():
+            with self.subTest(entry_point=name):
+                with self.assertRaises(ValueError):
+                    send()
+        self.assertEqual(self.sent, [])                 # nothing reached the client
+
+    def test_marked_user_data_never_reaches_the_client(self):
+        self._assert_refused([{"role": "system", "content": "Відповідай українською."},
+                              {"role": "user", "content": mark_user_data("вул. Прикладна 1")}])
+
+    def test_user_data_flag_never_reaches_the_client(self):
+        self._assert_refused([{"role": "user", "content": "clean", "user_data": True}])
+
+    def test_uninspectable_part_never_reaches_the_client(self):
+        self._assert_refused([{"role": "user", "content": [
+            {"type": "image_url", "image_url": {"url": "data:x"}}]}])
+
+    def test_clean_open_data_reaches_the_client(self):
+        # the control: the recorder is wired, so "nothing reached the client" above is not vacuous
+        messages = [{"role": "user", "content": "Текст закону України (відкриті дані)."}]
+        for send in self._entry_points(messages).values():
+            send()
+        self.assertEqual(self.sent, [messages, messages])
 
 
 class WalkStrings(unittest.TestCase):

@@ -87,20 +87,21 @@ def can_spend(nbytes_estimate: int = 0) -> bool:
 
 @contextmanager
 def _locked():
-    """Cross-process exclusive lock (Windows msvcrt) so the add() read-modify-write can't
-    lose an update when two collectors spend the Rada budget concurrently.
+    """Cross-process exclusive lock so the add() read-modify-write can't lose an update when two
+    collectors spend the Rada budget concurrently.
 
-    Follow-up detail: msvcrt.LK_LOCK retries 10×1 s internally then RAISES OSError (EDEADLOCK) — it
-    does NOT block forever. Our critical section is microseconds, so 10 s of contention means a
-    stuck holder; retry a bounded number of times and surface a clear error rather than letting a
-    bare EDEADLOCK escape from inside add() (mirrors politeness._locked)."""
-    import msvcrt
+    The same primitives and bounded-wait contract as politeness._locked: msvcrt on Windows,
+    fcntl.flock elsewhere. A bounded attempt raises OSError after about 10 s — it does NOT block
+    forever. Our critical section is microseconds, so 10 s of contention means a stuck holder;
+    retry a bounded number of times and surface a clear error rather than letting a bare
+    EDEADLOCK escape from inside add()."""
+    from pipelines.politeness import _lock_bounded, _unlock
     _TRAFFIC_DIR.mkdir(parents=True, exist_ok=True)
     f = open(_TRAFFIC_DIR / "budget.lock", "a+")
     try:
-        for attempt in range(6):  # up to ~60 s (6 × msvcrt's own 10 s) before giving up
+        for attempt in range(6):  # up to ~60 s (6 × the bounded 10 s) before giving up
             try:
-                msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
+                _lock_bounded(f)
                 break
             except OSError:
                 if attempt == 5:
@@ -110,7 +111,7 @@ def _locked():
             yield
         finally:
             try:
-                msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
+                _unlock(f)
             except OSError:
                 pass
     finally:

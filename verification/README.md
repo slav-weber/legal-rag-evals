@@ -236,10 +236,39 @@ not where generation calls it, the detector but not the exit code, the scope cla
 argument that reaches it. A unit test pins a function; an agent's change breaks the wiring around
 it. These ten are the bug items of the review-layer benchmark in `review_layer/`.
 
+### The review layer on the gates' misses: 10 of 10, no false alarm
+
+Protocol, items, key, every raw output and the grading: [`review_layer/`](review_layer/). The
+protocol was committed before any reviewer ran.
+
+The ten v3 bugs the gates missed and nine clean changes were each reviewed twice: by this
+repository's `change-reviewer` and by a generic reviewer, the `code-reviewer` agent of
+everything-claude-code, on the same model, with the same tools and the same output format.
+
+| Reviewer | Bugs caught | False alarms on clean changes |
+|---|---|---|
+| change-reviewer alone | 10 of 10 | 0 of 9 |
+| change-reviewer + finding-skeptic (the layer as shipped) | 10 of 10 | 0 of 9 |
+| generic code-reviewer (ECC) | 10 of 10 | 0 of 9 |
+
+Every serious finding named the planted line and the changed behaviour, and nearly all came with a
+run that showed the old and the new behaviour side by side. The skeptic examined all 14 serious
+findings of the change-reviewer and confirmed all 14.
+
+What this shows: on single planted defects, a reviewer agent that reads the repository and runs
+code closes the gap the gates leave, without raising alarms on clean changes. What it does not
+show: a difference between the two reviewers, since both are at the ceiling and the generic one
+also read `AGENTS.md` and cited its invariants; or what the skeptic is worth, since there was no
+false finding for it to remove. The next measurement needs harder items: larger diffs, several
+defects in one change, descriptions that argue for the change, and the generic reviewer without
+`AGENTS.md`. Review is also the expensive layer: each review took 3 to 10 minutes of agent time,
+where the gates take seconds.
+
 ## What these numbers are not
 
-- They measure the deterministic gates only. The agent-review layer is not in them yet; it will be
-  measured against the same catalogues, which is the point of keeping them fixed.
+- The seeded-bug numbers measure the deterministic gates only. The review layer is measured
+  separately (`review_layer/`), on the gates' misses and on clean changes, because a reviewer shown
+  only planted bugs would be rewarded for flagging everything.
 - They are not a quality score for the code. They are the share of these planted defects that CI
   would stop.
 - The catalogues are small and were written by coding agents, the same kind of author as the code,

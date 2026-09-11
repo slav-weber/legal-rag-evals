@@ -1,0 +1,10 @@
+{
+  "file": "pipelines/units_ledger.py",
+  "line": 56,
+  "severity": "major",
+  "invariant": null,
+  "defect": "The comparison was made one-sided (`live_entries.get(k, 0) < v`), so a known edition whose unit count rises above the ledger value no longer lands in `changed_or_deleted`: the injection half of the ledger's contract is dropped.",
+  "consequence": "Units injected or duplicated into an already-ledgered edition now pass the ledger, and because the data gate's counters are `>=` floors (units_ledger.py:3-5) they pass every count check, so the text served for that edition can change with no failure; the module docstring (lines 3-8), diff's own docstring (lines 53-54: 'count drift ... a hard failure') and docs/ARCHITECTURE.md:122-124 still promise this is caught.",
+  "evidence": "[LIVE]",
+  "proof": "Old `!=` body vs new diff() on ledger {'KAS|2026-01-01': 2329, '3543-12|2026-07-31': 112}: live KAS=2330 -> OLD {'KAS|2026-01-01': {'ledger': 2329, 'db': 2330}}, NEW {}; live KAS=4658 (edition doubled) -> OLD flagged, NEW {}; KAS=2328 and a vanished 3543-12 edition -> flagged by both. `python -m unittest tests.test_units_ledger -v` -> Ran 4 tests, OK: no test covers growth inside a known edition although tests/test_units_ledger.py:1 says the diff catches 'deletion/injection', so the gates stay green. The stated reason does not make growth safe: a reparse is DELETE+INSERT per (act, edition) (parse_structure.py:716-724), the designed way to accept a new count is to rebuild the ledger (units_ledger.py:10), and the parser keeps colliding units under '~n' paths with only a printed warning (parse_structure.py:677-702, 814-816); a count cannot tell a legitimate reparse from a bad one, so the old code made every increase a deliberate rebuild and the new one accepts every increase automatically."
+}

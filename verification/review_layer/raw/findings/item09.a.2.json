@@ -1,0 +1,10 @@
+{
+  "file": "eval/harness.py",
+  "line": 365,
+  "severity": "major",
+  "invariant": null,
+  "defect": "The error string _run_safe returns is discarded: score() appends {'id', 'error'} to `errors` (line 154) and main() prints them (lines 542-544), but run_golden returns no errors key and appends no detail row for the failed case, so a golden case that never ran is indistinguishable from one that passed; the guard does not work 'the way score() guards its rows', as the description claims.",
+  "consequence": "The terminal line and the golden verdict that write_run persists in the run header ($DATA_DIR/eval/t13/<run_id>.jsonl) both show a clean result ('mechanical_red': [], 'drift_signals': []) for cases that were never executed. For the non-gating precision_drift cases, and in score mode where golden does not gate, this false record is the only output, so an operator reading the run from the artifact (write_run persists the verdict 'so the gate's golden result is re-readable from the artifact', lines 387-388) cannot tell that the cases were skipped or which call failed.",
+  "evidence": "[LIVE]",
+  "proof": "H.run_golden(H.load_golden(), boom), boom raising RuntimeError('finish=length'), over the 3 committed cases (21.4-03 mechanical; 8c25575 precision_drift twice) -> {'mechanical_red': [], 'drift_signals': [], 'detail': []}, returned keys ['detail', 'drift_signals', 'mechanical_red']: the error is recorded nowhere. In the end-to-end gate run of the first finding, the verdict handed to write_run after 3 failed golden calls was {'mechanical_red': [], 'drift_signals': [], 'detail': []}, and the only golden output was 'golden: 3 loaded · mechanical-RED [] · drift-signals []'."
+}

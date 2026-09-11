@@ -1,0 +1,10 @@
+{
+  "file": "pipelines/rag/generate.py",
+  "line": 305,
+  "severity": "major",
+  "invariant": "5",
+  "defect": "Because generate() no longer raises when the LLM call fails, the eval harness's error channel (_run_safe, eval/harness.py:134-141, and the unguarded run_golden) never sees provider failures: they are scored as model abstains, and a live run in which every generation failed exits 0.",
+  "consequence": "`python -m eval.harness --backend live` in its default score mode during an outage (or with no API key) reports 'abstain 29', prints no errors line and exits 0, so a fully failed run reports success. In gate mode the RED is blamed on golden case 21.4-03 instead of the provider. In noise mode one connection error on one pass is persisted as a hard GOLD-flip incident with 0 pass-errors, which pollutes the measured noise floor that NOISE_FLIP_THRESHOLD is set from.",
+  "evidence": "[LIVE]",
+  "proof": "Same in-memory before/after; pipelines.db faked, write_run mocked (no file written), --etalons eval/data/retrieval_gold_v0.jsonl, call_tool_deepseek always raising APIConnectionError. --mode score: before -> main() raises APIConnectionError (CLI exit 1); after -> main() returns 0, output 'correct 0/29 · null 0 · wrong_pick-cand 0 · abstain 29 · drift-signal 0 · hallucination 0', no 'errors:' line. --mode gate: after -> returns 1 with 'GATE [RED]: hallucination=0 golden-mechanical-RED=['21.4-03']'. measure_noise(passes=2) on one row whose first call raises APIConnectionError and whose second returns a valid C1 answer: before -> pass-errors=1 set_flips=0 GOLD-flips=0, REPLAY GREEN; after -> pass-errors=0 set_flips=1 GOLD-flips=1, REPLAY RED."
+}

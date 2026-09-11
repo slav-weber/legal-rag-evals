@@ -1,0 +1,16 @@
+BLOCK
+
+```json
+[
+ {"file": "pipelines/units_ledger.py", "line": 56, "severity": "major", "invariant": null,
+  "defect": "The comparison was made one-sided (`live_entries.get(k, 0) < v`), so a known edition whose unit count rises above the ledger value no longer lands in `changed_or_deleted`: the injection half of the ledger's contract is dropped.",
+  "consequence": "Units injected or duplicated into an already-ledgered edition now pass the ledger, and because the data gate's counters are `>=` floors (units_ledger.py:3-5) they pass every count check, so the text served for that edition can change with no failure; the module docstring (lines 3-8), diff's own docstring (lines 53-54: 'count drift ... a hard failure') and docs/ARCHITECTURE.md:122-124 still promise this is caught.",
+  "evidence": "[LIVE]",
+  "proof": "Old `!=` body vs new diff() on ledger {'KAS|2026-01-01': 2329, '3543-12|2026-07-31': 112}: live KAS=2330 -> OLD {'KAS|2026-01-01': {'ledger': 2329, 'db': 2330}}, NEW {}; live KAS=4658 (edition doubled) -> OLD flagged, NEW {}; KAS=2328 and a vanished 3543-12 edition -> flagged by both. `python -m unittest tests.test_units_ledger -v` -> Ran 4 tests, OK: no test covers growth inside a known edition although tests/test_units_ledger.py:1 says the diff catches 'deletion/injection', so the gates stay green. The stated reason does not make growth safe: a reparse is DELETE+INSERT per (act, edition) (parse_structure.py:716-724), the designed way to accept a new count is to rebuild the ledger (units_ledger.py:10), and the parser keeps colliding units under '~n' paths with only a printed warning (parse_structure.py:677-702, 814-816); a count cannot tell a legitimate reparse from a bad one, so the old code made every increase a deliberate rebuild and the new one accepts every increase automatically."},
+ {"file": "pipelines/units_ledger.py", "line": 56, "severity": "major", "invariant": null,
+  "defect": "Since growth is no longer flagged, nothing signals the ledger rebuild the module requires after a reparse (line 10), so the baseline goes stale and any later partial deletion up to the accumulated growth is invisible too: the ledger degenerates into the per-edition `>=` floor it was written to replace.",
+  "consequence": "The partial-deletion guarantee the change claims to keep (README.md:26, 'a units ledger that catches partial deletions') now holds only if someone remembers to rebuild after every unflagged growth: an edition reparsed from 2329 to 2400 units can later lose 60 or 71 of them with a clean diff, which is the 'total above the anchor' blind spot of units_ledger.py:3-5, now per edition.",
+  "evidence": "[LIVE]",
+  "proof": "Ledger {'KAS|2026-01-01': 2329}. Step 1, a reparse grows the edition to 2400 and nobody rebuilds: OLD {'KAS|2026-01-01': {'ledger': 2329, 'db': 2400}} (red, which forces the rebuild to 2400), NEW {}. Step 2, 60 units lost (2400 -> 2340): OLD flagged (against 2329, and against a rebuilt 2400), NEW {}. Step 3, 71 units lost (2400 -> 2329): NEW {}. Sweep of live counts 2329..4999: NEW flags none. Same `python -c` script, run from the tree root with E:/Web Dev/my-projects/legal-rag-evals/.venv/Scripts/python.exe."}
+]
+```

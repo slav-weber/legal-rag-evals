@@ -1,0 +1,10 @@
+{
+  "file": "pipelines/rag/generate.py",
+  "line": 306,
+  "severity": "major",
+  "invariant": "2",
+  "defect": "The bare `except Exception` is not limited to transient provider errors: it also swallows the USER_DATA tripwire refusal (ValueError from _guard_deepseek), the missing-key RuntimeError and the 'tool-args JSON truncated, raise max_tokens' RuntimeError. It discards the exception without logging or recording it, and `break` routes every one of them to the post-loop abstain labelled 'no valid citations after retries' with zero attempts (lines 332-334).",
+  "consequence": "No data leaves, because the guard still refuses before sending. But a red-line event (user data routed toward the external model) and a deployment without DEEPSEEK_API_KEY (HTTP 500 before, 200 after) both become routine abstains, and their only record, abstain_reason in the trace (the UI shows fixed copy), is false. The finish=length truncation that lines 301-302 say was found by the replay-noise run would now be hidden the same way. An operator can no longer tell a misconfiguration, a tripwire firing or a max_tokens cap from a genuine model abstain.",
+  "evidence": "[LIVE]",
+  "proof": "generate(None, q) with search and build_candidates mocked, before (hunk reverted in memory) vs after. (1) real call_tool_deepseek, _DEEPSEEK_API_KEY='test-key', q=mark_user_data('client facts'): before raises ValueError 'DeepSeek: payload carries a USER_DATA marker...'; after returns abstained=True, abstain_reason='no valid citations after retries', attempts=[]. (2) real call_tool_deepseek, key '': before raises RuntimeError 'DEEPSEEK_API_KEY not set (DeepSeek is opt-in).'; after returns the same abstain. Through POST /api/generate the same case is HTTP 500 internal_error before and HTTP 200 abstain after, with the trace record abstain_reason='no valid citations after retries', attempts=[]. (3) call_tool_deepseek raising RuntimeError('DeepSeek tool-args JSON truncated (finish_reason=length) - raise max_tokens'): before raises, after returns the same abstain."
+}

@@ -1,0 +1,10 @@
+{
+  "file": "pipelines/units_ledger.py",
+  "line": 56,
+  "severity": "major",
+  "invariant": null,
+  "defect": "Since growth is no longer flagged, nothing signals the ledger rebuild the module requires after a reparse (line 10), so the baseline goes stale and any later partial deletion up to the accumulated growth is invisible too: the ledger degenerates into the per-edition `>=` floor it was written to replace.",
+  "consequence": "The partial-deletion guarantee the change claims to keep (README.md:26, 'a units ledger that catches partial deletions') now holds only if someone remembers to rebuild after every unflagged growth: an edition reparsed from 2329 to 2400 units can later lose 60 or 71 of them with a clean diff, which is the 'total above the anchor' blind spot of units_ledger.py:3-5, now per edition.",
+  "evidence": "[LIVE]",
+  "proof": "Ledger {'KAS|2026-01-01': 2329}. Step 1, a reparse grows the edition to 2400 and nobody rebuilds: OLD {'KAS|2026-01-01': {'ledger': 2329, 'db': 2400}} (red, which forces the rebuild to 2400), NEW {}. Step 2, 60 units lost (2400 -> 2340): OLD flagged (against 2329, and against a rebuilt 2400), NEW {}. Step 3, 71 units lost (2400 -> 2329): NEW {}. Sweep of live counts 2329..4999: NEW flags none. Same `python -c` script, run from the tree root with E:/Web Dev/my-projects/legal-rag-evals/.venv/Scripts/python.exe."
+}

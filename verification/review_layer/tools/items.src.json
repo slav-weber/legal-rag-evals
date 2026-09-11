@@ -1,0 +1,139 @@
+{
+ "seed": 20260911,
+ "rev": "4664512",
+ "items": [
+  {
+   "src": "V01",
+   "kind": "bug",
+   "mode": "catalogue",
+   "catalogue": "verification/seeded_bugs/catalogue_v3.py",
+   "description": "Tidy the channel dispatch in _run_channel"
+  },
+  {
+   "src": "V05",
+   "kind": "bug",
+   "mode": "catalogue",
+   "catalogue": "verification/seeded_bugs/catalogue_v3.py",
+   "description": "Accept a practical answer without legal theses instead of regenerating it twice and abstaining"
+  },
+  {
+   "src": "V07",
+   "kind": "bug",
+   "mode": "catalogue",
+   "catalogue": "verification/seeded_bugs/catalogue_v3.py",
+   "description": "Log a failed payload check in call_tool_deepseek instead of crashing the regeneration turn"
+  },
+  {
+   "src": "V08",
+   "kind": "bug",
+   "mode": "catalogue",
+   "catalogue": "verification/seeded_bugs/catalogue_v3.py",
+   "description": "End a transient provider error in the abstain instead of failing the whole request"
+  },
+  {
+   "src": "V11",
+   "kind": "bug",
+   "mode": "catalogue",
+   "catalogue": "verification/seeded_bugs/catalogue_v3.py",
+   "description": "Guard the golden-case calls in the harness the way score() guards its rows"
+  },
+  {
+   "src": "V13",
+   "kind": "bug",
+   "mode": "catalogue",
+   "catalogue": "verification/seeded_bugs/catalogue_v3.py",
+   "description": "Report an unclosed amendment quote as a warning, so one old edition does not fail the daily parse"
+  },
+  {
+   "src": "V14",
+   "kind": "bug",
+   "mode": "catalogue",
+   "catalogue": "verification/seeded_bugs/catalogue_v3.py",
+   "description": "Drop the per-request pause in fetch_texts: the daily byte budget already meters Rada"
+  },
+  {
+   "src": "V15",
+   "kind": "bug",
+   "mode": "catalogue",
+   "catalogue": "verification/seeded_bugs/catalogue_v3.py",
+   "description": "Simplify _last_signal to the latest row of the source"
+  },
+  {
+   "src": "V18",
+   "kind": "bug",
+   "mode": "catalogue",
+   "catalogue": "verification/seeded_bugs/catalogue_v3.py",
+   "description": "Let MARKER_RE match nested amendment markers"
+  },
+  {
+   "src": "V19",
+   "kind": "bug",
+   "mode": "catalogue",
+   "catalogue": "verification/seeded_bugs/catalogue_v3.py",
+   "description": "Flag only shrinking ledger entries: a reparse that adds units to an edition is legitimate"
+  },
+  {
+   "src": "C01",
+   "kind": "clean",
+   "mode": "patch",
+   "patch": "clean_synthetic/C01.patch",
+   "description": "Share one JSONL writer and run-id stamp across the harness run and noise outputs"
+  },
+  {
+   "src": "C02",
+   "kind": "clean",
+   "mode": "patch",
+   "patch": "clean_synthetic/C02.patch",
+   "description": "Build channel hit rows and the candidate column list in one place"
+  },
+  {
+   "src": "C03",
+   "kind": "clean",
+   "mode": "patch",
+   "patch": "clean_synthetic/C03.patch",
+   "description": "Report a reference without a tagged pair as a broken reranker pin"
+  },
+  {
+   "src": "C04",
+   "kind": "clean",
+   "mode": "patch",
+   "patch": "clean_synthetic/C04.patch",
+   "description": "Type the injectable generate and pin-check seams of the API"
+  },
+  {
+   "src": "C05",
+   "kind": "clean",
+   "mode": "patch",
+   "patch": "clean_synthetic/C05.patch",
+   "description": "Cache word lemmas so repeated forms are parsed once"
+  },
+  {
+   "src": "R1",
+   "kind": "clean",
+   "mode": "present",
+   "patch": "diffs/clean_R1.patch",
+   "description": "Split statements joined by semicolons in the structure parser (lint E702)"
+  },
+  {
+   "src": "R2",
+   "kind": "clean",
+   "mode": "present",
+   "patch": "diffs/clean_R2.patch",
+   "description": "Fix lint findings in the freshness probe, the edition diff and the fusion step"
+  },
+  {
+   "src": "R3",
+   "kind": "clean",
+   "mode": "present",
+   "patch": "diffs/clean_R3.patch",
+   "description": "Add a stub backend that cites an id outside its candidate set, so a CLI test can show that a hallucination alone turns the gate red"
+  },
+  {
+   "src": "R4",
+   "kind": "clean",
+   "mode": "present",
+   "patch": "diffs/clean_R4.patch",
+   "description": "Make the politeness lock portable: fcntl.flock with a bounded wait where msvcrt is not available"
+  }
+ ]
+}

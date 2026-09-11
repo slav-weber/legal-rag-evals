@@ -1,0 +1,10 @@
+{
+  "file": "pipelines/rag/generate.py",
+  "line": 305,
+  "severity": "major",
+  "invariant": "4",
+  "defect": "`except Exception: break` turns a failed DeepSeek call into an ordinary abstain result, so provider errors no longer reach the API seam's documented `except openai.OpenAIError` -> 503 generation_unavailable branch (api/main.py:118-121, docs/ARCHITECTURE.md:93): the caller is left behind and the generation layer pretends to have run (docs/ARCHITECTURE.md:130).",
+  "consequence": "During a DeepSeek outage every user gets HTTP 200 with the fixed abstain copy saying the norms available to the system contain no grounds and advising them to rephrase, a false answer instead of 'service temporarily unavailable'; meta.abstained=true with meta.degraded=[] passes the outage off as a whole result, so clients and monitoring keyed on 503 see nothing. The suite stays green because tests/test_api.py:150 injects a stub generate_fn that raises by itself and no test in tests/test_generate.py makes call_tool_deepseek raise.",
+  "evidence": "[LIVE]",
+  "proof": "TestClient(create_app(verify_pin=stub)) on the real _default_generate path: pipelines.db faked to a nullcontext, pipelines.rag.retrieval.search and build_candidates mocked to one candidate C1, ml.llm_client.call_tool_deepseek raising openai.APIConnectionError, write_trace mocked; the pre-change generate() rebuilt in memory by reverting the hunk from the source text. POST /api/generate {'question': 'q?'}: before -> HTTP 503 {'error': 'generation_unavailable', 'message': 'Сервіс генерації тимчасово недоступний.'}; after -> HTTP 200, meta.abstained=True, meta.degraded=[], trace_ref=None, html contains ABSTAIN_VYSNOVOK."
+}

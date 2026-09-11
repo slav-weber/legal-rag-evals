@@ -73,6 +73,11 @@ flag, tests skipped until the suite is green) and records which gate stops each 
 - **Third catalogue, written blind after the held-out misses were closed: 10 of 20;** 7 of 9 on
   repeated defect classes, 3 of 11 on new ones. Six of the ten misses sit next to a tested check,
   on a path no test runs: the user-data guard is tested, but not where generation calls it.
+- **Agent review of the ten v3 bugs the gates missed, plus nine clean changes: 10 of 10 caught,
+  no serious false alarm.** This repository's reviewer with its skeptic (`/review`) and a generic
+  reviewer (ECC's code-reviewer) both found every bug, so at this size the result speaks for agent
+  review, not for one prompt over the other. Protocol, raw outputs and grading:
+  `verification/review_layer/`.
 
 Reports: `verification/reports/`; the method and every miss with its reason: `verification/README.md`.
 

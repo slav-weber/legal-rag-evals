@@ -256,6 +256,9 @@ def main() -> int:
     work = Path(tempfile.mkdtemp(prefix="seeded-bugs-"))
     try:
         files = tree_files()
+        # provenance of what is measured: taken with the snapshot, not after the run
+        snapshot = {"git_head": _git("rev-parse", "--short", "HEAD").strip(),
+                    "uncommitted_changes": bool(_git("status", "--porcelain").strip())}
         base = work / "baseline"
         tree_digest = copy_tree(files, base)
         env = benchmark_env(work / "data")
@@ -306,8 +309,7 @@ def main() -> int:
             return 0
         meta = {"date": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                 "label": args.label,
-                "git_head": _git("rev-parse", "--short", "HEAD").strip(),
-                "uncommitted_changes": bool(_git("status", "--porcelain").strip()),
+                **snapshot,
                 "tree_sha256": tree_digest, "files": len(files),
                 "catalogue": catalogue.relative_to(ROOT).as_posix(),
                 "catalogue_sha256": _digest(catalogue.read_bytes()),

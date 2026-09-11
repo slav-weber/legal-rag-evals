@@ -4,6 +4,8 @@ record which gates catch it.
     uv run python -m verification.seeded_bugs.run                  # full run, writes the report
     uv run python -m verification.seeded_bugs.run --only B01,B07   # a subset, no report
     uv run python -m verification.seeded_bugs.run --no-write       # full run, print only
+    uv run python -m verification.seeded_bugs.run \
+        --catalogue verification/seeded_bugs/catalogue_heldout.py --label heldout
 
 Method:
 1. Copy the working tree (tracked and untracked files; ignored files and earlier reports excluded)
@@ -12,10 +14,12 @@ Method:
 3. For each bug: a fresh copy, the bug's exact find -> replace edits (each must match exactly once),
    then every gate in verification/gates.py, the same list CI runs. Caught = at least one gate
    fails.
-4. The canary (B00) must be caught, otherwise the runner itself is broken and nothing is reported.
+4. The catalogue's canary must be caught, otherwise the runner itself is broken and nothing is
+   reported.
 5. The report (JSON + Markdown) goes to verification/reports/. It names the git revision, a content
    digest of the measured tree and the sha256 of the catalogue, so a number cannot drift away from
-   the code and the bugs that produced it.
+   the code and the bugs that produced it. A report never overwrites an earlier one: a second
+   report on the same day needs its own --label.
 
 Gates run with API keys and database credentials removed from the environment and with DATA_DIR
 pointed at the temporary directory: a planted bug can neither reach a paid API nor write into the
@@ -26,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import platform
 import re
@@ -42,9 +47,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from verification.gates import GATES, gate_env, run_gate, tail  # noqa: E402
-from verification.seeded_bugs.catalogue import BUGS, Bug  # noqa: E402
+from verification.seeded_bugs.catalogue import Bug  # noqa: E402
 
-CATALOGUE = Path(__file__).resolve().with_name("catalogue.py")
+DEFAULT_CATALOGUE = Path(__file__).resolve().with_name("catalogue.py")
 REPORTS = ROOT / "verification" / "reports"
 _CREDENTIALS = ("DEEPSEEK_", "OPENAI_", "LLM_API_KEY", "DATABASE_URL", "PGPASSWORD")
 _FAILED_TEST = re.compile(r"^(?:FAIL|ERROR): (\S+) \(([^)]+)\)", re.MULTILINE)
@@ -63,6 +68,23 @@ def _git(*args: str) -> str:
 def _digest(data: bytes) -> str:
     """sha256 over LF-normalised bytes, so Windows and Linux checkouts hash the same."""
     return hashlib.sha256(data.replace(b"\r\n", b"\n")).hexdigest()
+
+
+def load_catalogue(path: Path) -> tuple[Bug, ...]:
+    """Import a catalogue module by path. It must define BUGS with unique ids and one canary."""
+    spec = importlib.util.spec_from_file_location(f"seeded_catalogue_{path.stem}", path)
+    if spec is None or spec.loader is None:
+        raise SystemExit(f"!! cannot load the catalogue {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    bugs = tuple(module.BUGS)
+    canaries = [b for b in bugs if b.canary]
+    if len(canaries) != 1:
+        raise SystemExit(f"!! {path.name}: exactly one canary is required, found {len(canaries)}")
+    ids = [b.id for b in bugs]
+    if len(ids) != len(set(ids)):
+        raise SystemExit(f"!! {path.name}: bug ids are not unique")
+    return bugs
 
 
 def tree_files() -> list[str]:
@@ -109,7 +131,7 @@ def evidence(gate: str, output: str) -> list[str]:
     if gate == "lint":
         return sorted(set(_RUFF_CODE.findall(output)))[:6]
     lines = [ln.strip() for ln in output.splitlines() if ln.strip()]
-    marked = [ln for ln in lines if ln.startswith(("!!", "GATE ["))]
+    marked = [ln for ln in lines if ln.startswith(("!!", "GATE [", "RATCHET"))]
     return (marked or lines[-1:])[:3]
 
 
@@ -145,15 +167,15 @@ def render_markdown(meta: dict, summary: dict, bugs: list[dict], canary: dict) -
     n, k = summary["planted"], summary["caught"]
     rate = f"{100 * k / n:.0f} %" if n else "n/a"
     dirty = " + uncommitted changes" if meta["uncommitted_changes"] else ""
-    out = [f"# Seeded-bug benchmark · {meta['date'][:10]}", "",
+    label = f" · {meta['label']}" if meta["label"] else ""
+    out = [f"# Seeded-bug benchmark · {meta['date'][:10]}{label}", "",
            f"**The deterministic gates caught {k} of {n} planted bugs ({rate}).** "
            f"The canary ({canary['id']}) was caught by {', '.join(canary['caught_by'])}.", "",
            "| | |", "|---|---|",
            f"| Measured | {meta['date']} · git `{meta['git_head']}`{dirty} · {meta['platform']} · "
            f"Python {meta['python']} |",
            f"| Tree | sha256 `{meta['tree_sha256']}` over {meta['files']} files |",
-           f"| Catalogue | `verification/seeded_bugs/catalogue.py` · sha256 "
-           f"`{meta['catalogue_sha256']}` |",
+           f"| Catalogue | `{meta['catalogue']}` · sha256 `{meta['catalogue_sha256']}` |",
            f"| Gates | {' · '.join(meta['gates'])} (the list CI runs: `verification/gates.py`) |",
            "", "## By area", "", "| Area | Planted | Caught |", "|---|---|---|"]
     for area, a in sorted(summary["by_area"].items()):
@@ -168,15 +190,21 @@ def render_markdown(meta: dict, summary: dict, bugs: list[dict], canary: dict) -
     if missed:
         out += ["", "## Missed", ""]
         out += [f"- **{b['id']}** {_cell(b['title'])}. {b['story']}" for b in missed]
-    out += ["", "## Reproduce", "", "```bash", "uv sync",
-            "uv run python -m verification.seeded_bugs.run", "```", ""]
+    command = "uv run python -m verification.seeded_bugs.run"
+    if meta["catalogue"] != DEFAULT_CATALOGUE.relative_to(ROOT).as_posix():
+        command += f" --catalogue {meta['catalogue']}"
+    out += ["", "## Reproduce", "", "```bash", "uv sync", command + " --no-write", "```", ""]
     return "\n".join(out)
+
+
+def report_stem(day: str, label: str) -> str:
+    return f"seeded-bugs-{day}" + (f"-{label}" if label else "")
 
 
 def write_report(meta: dict, baseline: dict, summary: dict, bugs: list[dict],
                  canary: dict) -> Path:
     REPORTS.mkdir(parents=True, exist_ok=True)
-    stem = f"seeded-bugs-{meta['date'][:10]}"
+    stem = report_stem(meta["date"][:10], meta["label"])
     public = [{**{k: v for k, v in b.items() if k != "gates"},
                "gates": {g: {"code": r["code"], "seconds": r["seconds"], "evidence": r["evidence"]}
                          for g, r in b["gates"].items()}}
@@ -200,17 +228,29 @@ def main() -> int:
         except (AttributeError, ValueError):
             pass
     ap = argparse.ArgumentParser(description="Seeded-bug benchmark over the deterministic gates")
+    ap.add_argument("--catalogue", default=DEFAULT_CATALOGUE.relative_to(ROOT).as_posix(),
+                    help="catalogue module to plant (a path relative to the repository)")
+    ap.add_argument("--label", default="", help="report name suffix, e.g. heldout")
     ap.add_argument("--only", default="", help="comma-separated bug ids; no report is written")
     ap.add_argument("--no-write", action="store_true", help="measure and print, write no report")
     ap.add_argument("--keep", action="store_true", help="keep the temporary trees for inspection")
     args = ap.parse_args()
 
+    catalogue = Path(args.catalogue)
+    catalogue = catalogue if catalogue.is_absolute() else ROOT / catalogue
+    all_bugs = load_catalogue(catalogue)
     wanted = {s.strip() for s in args.only.split(",") if s.strip()}
-    unknown = wanted - {b.id for b in BUGS}
+    unknown = wanted - {b.id for b in all_bugs}
     if unknown:
         print(f"!! unknown bug id(s): {', '.join(sorted(unknown))}")
         return 2
-    selected = [b for b in BUGS if b.canary or not wanted or b.id in wanted]
+    selected = [b for b in all_bugs if b.canary or not wanted or b.id in wanted]
+    writing = not wanted and not args.no_write
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    if writing and (REPORTS / f"{report_stem(today, args.label)}.md").exists():
+        print(f"!! a report {report_stem(today, args.label)}.md already exists: pass another "
+              f"--label (reports are never overwritten)")
+        return 2
 
     work = Path(tempfile.mkdtemp(prefix="seeded-bugs-"))
     try:
@@ -261,13 +301,15 @@ def main() -> int:
         if counted:
             print(f"\ncaught {summary['caught']} of {summary['planted']} planted bugs "
                   f"({100 * summary['caught'] / summary['planted']:.0f} %)")
-        if wanted or args.no_write:
+        if not writing:
             return 0
         meta = {"date": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "label": args.label,
                 "git_head": _git("rev-parse", "--short", "HEAD").strip(),
                 "uncommitted_changes": bool(_git("status", "--porcelain").strip()),
                 "tree_sha256": tree_digest, "files": len(files),
-                "catalogue_sha256": _digest(CATALOGUE.read_bytes()),
+                "catalogue": catalogue.relative_to(ROOT).as_posix(),
+                "catalogue_sha256": _digest(catalogue.read_bytes()),
                 "python": platform.python_version(), "platform": platform.system(),
                 "gates": [g.name for g in GATES]}
         report = write_report(meta, baseline, summary, counted, canary)

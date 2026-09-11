@@ -76,6 +76,7 @@ def load_catalogue(path: Path) -> tuple[Bug, ...]:
     if spec is None or spec.loader is None:
         raise SystemExit(f"!! cannot load the catalogue {path}")
     module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module          # dataclasses resolve annotations through sys.modules
     spec.loader.exec_module(module)
     bugs = tuple(module.BUGS)
     canaries = [b for b in bugs if b.canary]

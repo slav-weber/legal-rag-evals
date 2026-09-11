@@ -70,6 +70,9 @@ flag, tests skipped until the suite is green) and records which gate stops each 
   14 on defect classes the first catalogue did not have.** The most instructive miss: a change that
   lets the citation gate accept an answer citing a real candidate next to a fabricated one would
   pass the tests.
+- **Third catalogue, written blind after the held-out misses were closed: 10 of 20;** 7 of 9 on
+  repeated defect classes, 3 of 11 on new ones. Six of the ten misses sit next to a tested check,
+  on a path no test runs: the user-data guard is tested, but not where generation calls it.
 
 Reports: `verification/reports/`; the method and every miss with its reason: `verification/README.md`.
 

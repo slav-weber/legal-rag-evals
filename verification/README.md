@@ -199,6 +199,43 @@ Closing these eight turns the held-out catalogue into training data too. The nex
 needs a new held-out catalogue, written after the next round of fixes by an agent that has not seen
 the tests.
 
+### Third catalogue (v3): 10 of 20
+
+Report: [`reports/seeded-bugs-2026-09-11-v3.md`](reports/seeded-bugs-2026-09-11-v3.md), measured on
+git `32dff05`, after the fixes for the held-out misses. The catalogue was written blind, like the
+held-out one, and committed before the run together with the split below.
+
+| v3 bugs | Planted | Caught |
+|---|---|---|
+| repeats of an earlier catalogue's class (the same mistake in the same mechanism) | 9 | 7 |
+| new classes | 11 | 3 |
+| all | 20 | 10 |
+
+Two repeats got through, each in the shadow of a caught relative: the citation rule exempting an
+answer without theses (V05, a variant of B03) and the units ledger ignoring growth (V19, the other
+side of the line H12 changed). The three new classes that were caught fell to tests from the gap
+rounds (the fusion order, V02; the budget, V06) and to an existing backstop test (V16).
+
+What the gates missed:
+
+| Bug | Why nothing failed |
+|---|---|
+| V01: the retrieval channels scope-gate on today, not on the requested `as_of` | the scope test checks the SQL clause; no test follows `as_of` from `search()` into the channels |
+| V05: an answer without theses is accepted with no citation | every gate test's answer carries theses; none leaves them empty |
+| V07: the user-data tripwire is logged and skipped on the generation path | the tripwire tests call the guard directly and the generation tests mock `call_tool_deepseek`, so nothing runs the guard inside it |
+| V08: a provider outage is answered as a 200 abstain | the API's 503 test raises from an injected `generate()`; no test makes the provider call inside `generate()` fail |
+| V11: golden cases that raise are skipped and the gate stays green | the golden tests feed wrong answers, never a call that raises |
+| V13: an unclosed amendment quote no longer fails the parse run | the detector is tested; the exit code of the run that uses it is not |
+| V14: `fetch_texts` skips the polite pause | `fetch_texts` has no test; the politeness tests pin the policy table, not whether a caller uses it |
+| V15: the freshness probe compares a new signal with a failed probe's NULL | the query never runs in a test: the one test that touches the previous signal mocks it |
+| V18: the amendment-marker pattern turns greedy and deletes the text between two notes | no test has a unit whose text between two notes would be lost; the whole suite passes with the greedy pattern |
+| V19: the units ledger no longer flags units injected into a known edition | the ledger tests cover a deletion, a vanished edition and a new edition, not growth inside a known one |
+
+Six of the ten sit next to a check that is tested, on a path that is not: the guard is tested but
+not where generation calls it, the detector but not the exit code, the scope clause but not the
+argument that reaches it. A unit test pins a function; an agent's change breaks the wiring around
+it. These ten are the bug items of the review-layer benchmark in `review_layer/`.
+
 ## What these numbers are not
 
 - They measure the deterministic gates only. The agent-review layer is not in them yet; it will be

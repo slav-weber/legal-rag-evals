@@ -8,7 +8,7 @@ realistic bugs, one at a time.
 
 | Gate | What a pass proves | CI | pre-commit | Benchmark |
 |---|---|---|---|---|
-| `unit-tests` | the 301 offline tests pass (model, embeddings and reranker mocked) | every push | | yes |
+| `unit-tests` | the 314 offline tests pass (model, embeddings and reranker mocked) | every push | | yes |
 | `test-ratchet` | every recorded test still exists and every skip is on the allowed list | every push | | yes |
 | `lint` | ruff finds nothing under the rule set in `pyproject.toml` (E, F, W and S104) | every push | staged files | yes |
 | `eval-no-llm` | the reference questions and the golden corpus validate: format, teeth, `bug_ref` | every push | | yes |
@@ -42,6 +42,24 @@ only allowed skip is the optional reranker extra.
 
 Tests added, or a skip made on purpose: `uv run python -m verification.test_ratchet --update` in the
 same commit, where a reviewer sees the inventory change.
+
+## The agent layer
+
+The gates stop what a check can express. The rest is left to review, and here review is done by
+agents under rules they cannot skip:
+
+- `AGENTS.md` is the source of truth for any coding agent: the commands, the seven invariants of the
+  system, the boundaries (never delete, skip or weaken a test; never touch the catalogues, the
+  reports or CI as a side effect) and the definition of done, with the evidence marks [LIVE],
+  [CODE] and [CLAIM]. `CLAUDE.md` imports it.
+- `/review` (`.claude/skills/review/`) runs the gates, gives the diff to the `change-reviewer`
+  subagent, which checks it against the invariants and has to prove every finding, and gives every
+  serious finding to the `finding-skeptic` subagent, whose job is to refute it. Only confirmed
+  findings reach the report in `verification/reviews/`.
+- A Stop hook (`.claude/hooks/gates_before_stop.py`) does not let an agent that changed Python files
+  finish while a gate is red, and tells it which gate.
+- `.claude/settings.json` makes editing the test inventory, the catalogues, the reports, the gate
+  list or CI, and pushing, ask a person first; reading `.env` is denied.
 
 ## The seeded-bug benchmark
 

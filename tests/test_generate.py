@@ -190,6 +190,7 @@ class Gate(unittest.TestCase):
         good = {"vysnovok": "v", "obgruntuvannya": [{"teza": "t", "citations": ["C1"]}],
                 "abstain": False}
         res, ncalls = self._run([inj, good])          # 1st injects C99 → reject → retry → clean
+        self.assertEqual(ncalls, 2)                        # the mixed answer is rejected, not trimmed
         self.assertNotIn("C99", res["resolved"])           # injected id NEVER resolved
         self.assertEqual(set(res["resolved"]), {"C1"})
         self.assertFalse(res["abstained"])
@@ -236,6 +237,12 @@ class Budget(unittest.TestCase):
         # the budget is inclusive: 5 000 + 5 000 tokens fill a 10 000-token budget exactly
         cands = [self._c("C1", 5000), self._c("C2", 5000), self._c("C3", 1)]
         self.assertEqual([c["id"] for c in G._apply_budget(cands, 10000)], ["C1", "C2"])
+
+    def test_the_list_ends_at_the_first_candidate_that_does_not_fit(self):
+        # tail-drop, not bin-packing: a smaller candidate after an oversized one is not pulled
+        # in, so C1..Ck stay the top of the ranking and the dropped-report stays a suffix
+        cands = [self._c("C1", 6000), self._c("C2", 6000), self._c("C3", 1000)]
+        self.assertEqual([c["id"] for c in G._apply_budget(cands, 10000)], ["C1"])
 
 
 class Render(unittest.TestCase):

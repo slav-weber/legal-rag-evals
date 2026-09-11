@@ -118,6 +118,18 @@ class Degradation(unittest.TestCase):
         self.assertEqual([h["act"] for h in hits], ["A", "B"])       # RRF order kept, and flagged
 
 
+class Reranking(unittest.TestCase):
+    def test_reranked_order_is_best_first(self):
+        fused = [_hit("A", "ст.1"), _hit("B", "ст.2")]
+        with mock.patch.object(R, "exact_lookup", return_value=[]), \
+             mock.patch.object(R, "hybrid", return_value=(fused, {"degraded": []})), \
+             mock.patch.object(R, "_fetch_texts", return_value={}), \
+             mock.patch("ml.reranker.rerank", return_value=[0.1, 0.9]):
+            hits, meta = R.search(None, "q", k=2)
+        self.assertTrue(meta["reranked"])
+        self.assertEqual([h["act"] for h in hits], ["B", "A"])       # the higher score comes first
+
+
 class ExactRoute(unittest.TestCase):
     """«Article N of act X» resolves by regex and SQL, never by similarity."""
 

@@ -310,6 +310,11 @@ class Pins(unittest.TestCase):
         with self.assertRaises(R.GoldFormatError):
             R._load_gold(f, {"3543-12"})
 
+    def test_noise_threshold_is_the_measured_one(self):
+        # 0.310 set-flip rate measured on the 29x2 live replay of 2026-07-18, times a ~1.45
+        # margin. Raising it hides real instability; lowering it makes the replay gate cry wolf.
+        self.assertEqual(H.NOISE_FLIP_THRESHOLD, 0.45)
+
 
 class CliGate(unittest.TestCase):
     """CLI subprocess test: --mode gate must exit 1 on a golden RED-leg breach, 0 when clean —

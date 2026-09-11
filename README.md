@@ -79,8 +79,10 @@ flag, tests skipped until the suite is green) and records which gate stops each 
   review, not for one prompt over the other. Protocol, raw outputs and grading:
   `verification/review_layer/`.
 - Tests for the ten v3 misses followed; all three catalogues are now caught in full (26, 20 and 20),
-  which makes them training data. A fourth catalogue, written blind after these fixes, is the next
-  honest number.
+  which makes them training data.
+- **A fourth catalogue, written blind after those tests: 17 of 20** — 14 of 14 on defect classes an
+  earlier catalogue already had, 3 of 6 on new ones. The three misses have the shape of the earlier
+  ones: the function is tested, the property beside it is not.
 
 Reports: `verification/reports/`; the method and every miss with its reason: `verification/README.md`.
 

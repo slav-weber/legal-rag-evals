@@ -277,6 +277,30 @@ held-out one 20 of 20 and v3 20 of 20
 All three are training data now; the next honest number needs a fourth catalogue, written blind
 after these fixes.
 
+### Fourth catalogue (v4), written blind after the fixes: 17 of 20
+
+Report: [`reports/seeded-bugs-2026-09-11-v4.md`](reports/seeded-bugs-2026-09-11-v4.md), measured on
+git `78ac935`. The split below was fixed in the catalogue's commit message, before the run.
+
+| v4 bugs | Planted | Caught |
+|---|---|---|
+| repeats of a defect class an earlier catalogue already had | 14 | 14 |
+| new classes | 6 | 3 |
+| all | 20 | 17 |
+
+Fourteen repeats to six new classes is itself a result: after three catalogues a fourth blind author
+lands mostly on ground already walked, and the gates now hold all of it, where the first catalogue
+held 13 of 26. The number that carries information is 3 of 6 on the classes nobody had planted
+before.
+
+| Missed | Why nothing failed |
+|---|---|
+| W05: candidate dedup groups by article number alone, so the same article number in two acts collapses into one candidate | `dedup_candidates` is tested, but inside one act only: the fixtures vary the unit path and never the act, so a key that ignores the act changes nothing they can see |
+| W11: the replay-noise gate no longer turns RED on a gold-citation flip by itself | the gold-flip branch is counted, never gated: the unit test asserts the flip count, and the end-to-end noise test drives the rate branch — its own comment says the gold branch is covered at unit level |
+| W16: an article's text no longer contains its own heading | the parser tests pin section texts and what must not be pulled into them; none asserts that an article's heading is part of its text |
+
+All three have the shape of the v3 misses: the function is tested, the property beside it is not.
+
 ## What these numbers are not
 
 - The seeded-bug numbers measure the deterministic gates only. The review layer is measured

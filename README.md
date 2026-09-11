@@ -46,6 +46,27 @@ exercises the whole harness (loading, validation, scoring, taxonomy, golden corp
 mocked generator; `--no-llm` is the deterministic gate that validates the reference questions and the
 golden corpus without calling anything.
 
+## Verification
+
+[![verify](https://github.com/slav-weber/legal-rag-evals/actions/workflows/verify.yml/badge.svg)](https://github.com/slav-weber/legal-rag-evals/actions/workflows/verify.yml)
+
+Every push runs the same gates in CI: the test suite, ruff, the two offline harness gates, a secret
+scan over the full git history and an audit of the locked dependencies
+(`.github/workflows/verify.yml`, `verification/gates.py`).
+
+How much do those gates actually catch? `verification/seeded_bugs/` plants 26 realistic defects
+one at a time (a bypassed citation gate, an off-by-one, a flipped comparison, a swallowed
+degradation flag, tests skipped until the suite is green) and records which gate stops each one.
+**First measurement, 2026-09-11: 13 of 26.** The gates stop 8 of 8 in the citation gate, the
+user-data tripwire and the exit codes, and 0 of 7 in retrieval, which this extract tests only
+through live evaluation. Report: `verification/reports/seeded-bugs-2026-09-11.md`; method and the
+gap list: `verification/README.md`.
+
+```bash
+uv run python -m verification.gates
+uv run python -m verification.seeded_bugs.run
+```
+
 ## Results
 
 Measured on the private corpus (11 acts, 4 706 citable chunks, 4 680 embeddings) with the 29
@@ -96,7 +117,7 @@ This repository ships no corpus, so the live path is documented, not required.
 
 Designed, specified and accepted by Slava Weber; the implementation was typed by coding agents
 (Claude Code) working from specifications, acceptance criteria and reference questions written for
-each task, then read and accepted line by line. In the private repository 185 of 186 commits carry
+each task, then accepted against tests, measured runs and the gates described under Verification. In the private repository 185 of 186 commits carry
 the agent's `Co-Authored-By` trailer. The reference questions were written by the project's lead
 agent and cross-checked by five independent agent reviews; they were never written by the model
 under evaluation.

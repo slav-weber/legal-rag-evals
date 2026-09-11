@@ -1,0 +1,979 @@
+{
+  "meta": {
+    "date": "2026-09-11T12:23:21Z",
+    "git_head": "23ae162",
+    "uncommitted_changes": false,
+    "tree_sha256": "b60e2b8c413c1f553637917229f9b31242d81317688cabdc37449b927a8eed38",
+    "files": 121,
+    "catalogue_sha256": "528d6f74aa8fc49149c63c7fadf011dc7e5da4ea10b608b9ea886b901eb1f37e",
+    "python": "3.12.13",
+    "platform": "Windows",
+    "gates": [
+      "unit-tests",
+      "lint",
+      "eval-no-llm",
+      "eval-stub-gate"
+    ]
+  },
+  "baseline": {
+    "unit-tests": {
+      "code": 0,
+      "seconds": 2.83
+    },
+    "lint": {
+      "code": 0,
+      "seconds": 0.09
+    },
+    "eval-no-llm": {
+      "code": 0,
+      "seconds": 0.11
+    },
+    "eval-stub-gate": {
+      "code": 0,
+      "seconds": 0.09
+    }
+  },
+  "canary": {
+    "id": "B00",
+    "caught_by": [
+      "unit-tests"
+    ]
+  },
+  "summary": {
+    "planted": 26,
+    "caught": 13,
+    "missed": [
+      "B05",
+      "B06",
+      "B09",
+      "B10",
+      "B11",
+      "B12",
+      "B13",
+      "B14",
+      "B15",
+      "B22",
+      "B23",
+      "B25",
+      "B26"
+    ],
+    "by_area": {
+      "citation gate": {
+        "planted": 3,
+        "caught": 3
+      },
+      "context budget": {
+        "planted": 2,
+        "caught": 1
+      },
+      "rendering": {
+        "planted": 3,
+        "caught": 2
+      },
+      "retrieval": {
+        "planted": 7,
+        "caught": 0
+      },
+      "data governance": {
+        "planted": 2,
+        "caught": 2
+      },
+      "exit codes": {
+        "planted": 3,
+        "caught": 3
+      },
+      "api": {
+        "planted": 2,
+        "caught": 1
+      },
+      "evaluation": {
+        "planted": 3,
+        "caught": 1
+      },
+      "test integrity": {
+        "planted": 1,
+        "caught": 0
+      }
+    },
+    "caught_by_gate": {
+      "unit-tests": 13
+    },
+    "only_gate": {
+      "unit-tests": 13
+    }
+  },
+  "bugs": [
+    {
+      "id": "B01",
+      "area": "citation gate",
+      "title": "The gate accepts citation IDs outside the candidate set",
+      "story": "Asked to stop answers failing on an unknown ID, the agent keeps every cited ID and falls back to the raw ID as the citation text.",
+      "canary": false,
+      "caught": true,
+      "caught_by": [
+        "unit-tests"
+      ],
+      "gates": {
+        "unit-tests": {
+          "code": 1,
+          "seconds": 2.81,
+          "evidence": [
+            "test_adversarial_injection_rejected (test_generate.Gate)",
+            "test_out_of_set_retries_then_abstains (test_generate.Gate)",
+            "test_recovers_on_retry (test_generate.Gate)",
+            "test_retry_appends_assistant_tool_call_turn (test_generate.Gate)",
+            "test_in_set_resolves_out_of_set_is_invalid (test_generate.Resolve)"
+          ]
+        },
+        "lint": {
+          "code": 0,
+          "seconds": 0.12,
+          "evidence": []
+        },
+        "eval-no-llm": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        },
+        "eval-stub-gate": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        }
+      }
+    },
+    {
+      "id": "B02",
+      "area": "citation gate",
+      "title": "One regeneration fewer before the honest abstain",
+      "story": "Reads max_retries as the total number of calls and corrects the loop bound.",
+      "canary": false,
+      "caught": true,
+      "caught_by": [
+        "unit-tests"
+      ],
+      "gates": {
+        "unit-tests": {
+          "code": 1,
+          "seconds": 2.78,
+          "evidence": [
+            "test_out_of_set_retries_then_abstains (test_generate.Gate)",
+            "test_zero_citation_slip_rejected (test_generate.Gate)"
+          ]
+        },
+        "lint": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        },
+        "eval-no-llm": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        },
+        "eval-stub-gate": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        }
+      }
+    },
+    {
+      "id": "B03",
+      "area": "citation gate",
+      "title": "An answer without citations passes when it has a conclusion",
+      "story": "Decides that a plain-language conclusion is useful even without citations and only rejects answers that have neither.",
+      "canary": false,
+      "caught": true,
+      "caught_by": [
+        "unit-tests"
+      ],
+      "gates": {
+        "unit-tests": {
+          "code": 1,
+          "seconds": 2.78,
+          "evidence": [
+            "test_zero_citation_slip_rejected (test_generate.Gate)"
+          ]
+        },
+        "lint": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        },
+        "eval-no-llm": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        },
+        "eval-stub-gate": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        }
+      }
+    },
+    {
+      "id": "B04",
+      "area": "context budget",
+      "title": "The budget can drop every candidate",
+      "story": "Simplifies the budget loop; the guarantee to keep at least one candidate goes with the condition that looked redundant.",
+      "canary": false,
+      "caught": true,
+      "caught_by": [
+        "unit-tests"
+      ],
+      "gates": {
+        "unit-tests": {
+          "code": 1,
+          "seconds": 2.78,
+          "evidence": [
+            "test_keeps_at_least_one_never_truncates (test_generate.Budget)"
+          ]
+        },
+        "lint": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        },
+        "eval-no-llm": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        },
+        "eval-stub-gate": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        }
+      }
+    },
+    {
+      "id": "B05",
+      "area": "context budget",
+      "title": "A candidate that fits the budget exactly is dropped",
+      "story": "Tightens the budget check to strictly below the limit.",
+      "canary": false,
+      "caught": false,
+      "caught_by": [],
+      "gates": {
+        "unit-tests": {
+          "code": 0,
+          "seconds": 2.83,
+          "evidence": []
+        },
+        "lint": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        },
+        "eval-no-llm": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        },
+        "eval-stub-gate": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        }
+      }
+    },
+    {
+      "id": "B06",
+      "area": "rendering",
+      "title": "Citation chips are rendered without HTML escaping",
+      "story": "Removes what looks like double escaping around the citation chip.",
+      "canary": false,
+      "caught": false,
+      "caught_by": [],
+      "gates": {
+        "unit-tests": {
+          "code": 0,
+          "seconds": 2.8,
+          "evidence": []
+        },
+        "lint": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        },
+        "eval-no-llm": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        },
+        "eval-stub-gate": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        }
+      }
+    },
+    {
+      "id": "B07",
+      "area": "rendering",
+      "title": "Internal candidate IDs reach the reader's text",
+      "story": "Replaces the cleaning helper with plain escaping; IDs such as C3 stay in the prose.",
+      "canary": false,
+      "caught": true,
+      "caught_by": [
+        "unit-tests"
+      ],
+      "gates": {
+        "unit-tests": {
+          "code": 1,
+          "seconds": 2.83,
+          "evidence": [
+            "test_strips_leaked_internal_cids (test_generate.Render)"
+          ]
+        },
+        "lint": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        },
+        "eval-no-llm": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        },
+        "eval-stub-gate": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        }
+      }
+    },
+    {
+      "id": "B08",
+      "area": "rendering",
+      "title": "An abstain shows the model's own prose",
+      "story": "Shows the model's explanation on an abstain when it has one, instead of the fixed copy.",
+      "canary": false,
+      "caught": true,
+      "caught_by": [
+        "unit-tests"
+      ],
+      "gates": {
+        "unit-tests": {
+          "code": 1,
+          "seconds": 2.78,
+          "evidence": [
+            "test_abstain_renders_fixed_copy_and_zero_model_prose (test_generate.Render)"
+          ]
+        },
+        "lint": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        },
+        "eval-no-llm": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        },
+        "eval-stub-gate": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        }
+      }
+    },
+    {
+      "id": "B09",
+      "area": "retrieval",
+      "title": "An edition whose last day in force is today is filtered out",
+      "story": "Rewrites the in-force check with a strict comparison.",
+      "canary": false,
+      "caught": false,
+      "caught_by": [],
+      "gates": {
+        "unit-tests": {
+          "code": 0,
+          "seconds": 2.8,
+          "evidence": []
+        },
+        "lint": {
+          "code": 0,
+          "seconds": 0.12,
+          "evidence": []
+        },
+        "eval-no-llm": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        },
+        "eval-stub-gate": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        }
+      }
+    },
+    {
+      "id": "B10",
+      "area": "retrieval",
+      "title": "RRF fusion ignores the calibrated channel weights",
+      "story": "Calls the weighting premature and gives every channel the same weight.",
+      "canary": false,
+      "caught": false,
+      "caught_by": [],
+      "gates": {
+        "unit-tests": {
+          "code": 0,
+          "seconds": 2.77,
+          "evidence": []
+        },
+        "lint": {
+          "code": 0,
+          "seconds": 0.12,
+          "evidence": []
+        },
+        "eval-no-llm": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        },
+        "eval-stub-gate": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        }
+      }
+    },
+    {
+      "id": "B11",
+      "area": "retrieval",
+      "title": "A failed retrieval channel disappears without a degradation flag",
+      "story": "Treats a failed channel as noise; the fused result looks whole although a channel is lost.",
+      "canary": false,
+      "caught": false,
+      "caught_by": [],
+      "gates": {
+        "unit-tests": {
+          "code": 0,
+          "seconds": 2.77,
+          "evidence": []
+        },
+        "lint": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        },
+        "eval-no-llm": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        },
+        "eval-stub-gate": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        }
+      }
+    },
+    {
+      "id": "B12",
+      "area": "retrieval",
+      "title": "Code abbreviations match case-insensitively",
+      "story": "Makes the abbreviation match case-insensitive for robustness; the word «кас» (a cash desk) now routes a question to the Code of Administrative Procedure.",
+      "canary": false,
+      "caught": false,
+      "caught_by": [],
+      "gates": {
+        "unit-tests": {
+          "code": 0,
+          "seconds": 2.77,
+          "evidence": []
+        },
+        "lint": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        },
+        "eval-no-llm": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        },
+        "eval-stub-gate": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        }
+      }
+    },
+    {
+      "id": "B13",
+      "area": "retrieval",
+      "title": "The reranker fallback is not flagged as degraded",
+      "story": "Removes the degradation flag in the reranker fallback because the RRF order is good enough.",
+      "canary": false,
+      "caught": false,
+      "caught_by": [],
+      "gates": {
+        "unit-tests": {
+          "code": 0,
+          "seconds": 2.8,
+          "evidence": []
+        },
+        "lint": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        },
+        "eval-no-llm": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        },
+        "eval-stub-gate": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        }
+      }
+    },
+    {
+      "id": "B14",
+      "area": "retrieval",
+      "title": "The Ukrainian apostrophe U+02BC is not normalised",
+      "story": "Normalises apostrophe variants but forgets the modifier letter apostrophe Ukrainian uses.",
+      "canary": false,
+      "caught": false,
+      "caught_by": [],
+      "gates": {
+        "unit-tests": {
+          "code": 0,
+          "seconds": 2.77,
+          "evidence": []
+        },
+        "lint": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        },
+        "eval-no-llm": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        },
+        "eval-stub-gate": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        }
+      }
+    },
+    {
+      "id": "B15",
+      "area": "retrieval",
+      "title": "«стаття 210-1» is parsed as article 210",
+      "story": "Simplifies the article-number pattern to digits only.",
+      "canary": false,
+      "caught": false,
+      "caught_by": [],
+      "gates": {
+        "unit-tests": {
+          "code": 0,
+          "seconds": 2.83,
+          "evidence": []
+        },
+        "lint": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        },
+        "eval-no-llm": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        },
+        "eval-stub-gate": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        }
+      }
+    },
+    {
+      "id": "B16",
+      "area": "data governance",
+      "title": "The user-data tripwire no longer scans dictionary keys",
+      "story": "Stops scanning keys because keys are never user data.",
+      "canary": false,
+      "caught": true,
+      "caught_by": [
+        "unit-tests"
+      ],
+      "gates": {
+        "unit-tests": {
+          "code": 1,
+          "seconds": 2.84,
+          "evidence": [
+            "test_D_sentinel_in_dict_key (test_user_data_tripwire.Tripwire)",
+            "test_safe_scalars_skipped (test_user_data_tripwire.WalkStrings)",
+            "test_scans_keys_and_values (test_user_data_tripwire.WalkStrings)"
+          ]
+        },
+        "lint": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        },
+        "eval-no-llm": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        },
+        "eval-stub-gate": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        }
+      }
+    },
+    {
+      "id": "B17",
+      "area": "data governance",
+      "title": "The tripwire lets through values it cannot inspect",
+      "story": "Skips unknown value types instead of refusing the whole message.",
+      "canary": false,
+      "caught": true,
+      "caught_by": [
+        "unit-tests"
+      ],
+      "gates": {
+        "unit-tests": {
+          "code": 1,
+          "seconds": 2.78,
+          "evidence": [
+            "test_B_bytes_value_rejected (test_user_data_tripwire.Tripwire)",
+            "test_C_set_value_rejected (test_user_data_tripwire.Tripwire)",
+            "test_G_object_with_sentinel_str_rejected (test_user_data_tripwire.Tripwire)",
+            "test_uninspectable_raises (test_user_data_tripwire.WalkStrings)"
+          ]
+        },
+        "lint": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        },
+        "eval-no-llm": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        },
+        "eval-stub-gate": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        }
+      }
+    },
+    {
+      "id": "B18",
+      "area": "exit codes",
+      "title": "The worst of several exit codes is taken as the numeric maximum",
+      "story": "Replaces the severity table with max(); STALE (3) now outranks FAIL (1).",
+      "canary": false,
+      "caught": true,
+      "caught_by": [
+        "unit-tests"
+      ],
+      "gates": {
+        "unit-tests": {
+          "code": 1,
+          "seconds": 2.86,
+          "evidence": [
+            "test_worst_severity_not_bitwise (test_exitcodes.Convention)"
+          ]
+        },
+        "lint": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        },
+        "eval-no-llm": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        },
+        "eval-stub-gate": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        }
+      }
+    },
+    {
+      "id": "B19",
+      "area": "exit codes",
+      "title": "A run that collected less than expected exits 0",
+      "story": "Drops the undercount condition as a duplicate of the error count.",
+      "canary": false,
+      "caught": true,
+      "caught_by": [
+        "unit-tests"
+      ],
+      "gates": {
+        "unit-tests": {
+          "code": 1,
+          "seconds": 2.81,
+          "evidence": [
+            "test_fail_if (test_exitcodes.Convention)"
+          ]
+        },
+        "lint": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        },
+        "eval-no-llm": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        },
+        "eval-stub-gate": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        }
+      }
+    },
+    {
+      "id": "B20",
+      "area": "exit codes",
+      "title": "The snapshot run exits 0 on network errors",
+      "story": "Treats a connection reset as transient: the anti-pattern exitcodes.py was written against.",
+      "canary": false,
+      "caught": true,
+      "caught_by": [
+        "unit-tests"
+      ],
+      "gates": {
+        "unit-tests": {
+          "code": 1,
+          "seconds": 2.83,
+          "evidence": [
+            "test_errors_fail (test_exitcodes.KsuExit)",
+            "test_errors_win_over_defer (test_exitcodes.KsuExit)",
+            "test_errors_are_nonzero (test_ksu_snapshot_exit.ExitCodeUnit)",
+            "test_http_500_exits_nonzero (test_ksu_snapshot_exit.MainFailurePathSmoke)",
+            "test_network_exception_exits_nonzero (test_ksu_snapshot_exit.MainFailurePathSmoke)"
+          ]
+        },
+        "lint": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        },
+        "eval-no-llm": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        },
+        "eval-stub-gate": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        }
+      }
+    },
+    {
+      "id": "B21",
+      "area": "api",
+      "title": "A 500 response carries the exception text",
+      "story": "Adds the exception message to the error body to make debugging easier.",
+      "canary": false,
+      "caught": true,
+      "caught_by": [
+        "unit-tests"
+      ],
+      "gates": {
+        "unit-tests": {
+          "code": 1,
+          "seconds": 2.88,
+          "evidence": [
+            "test_500_internal_error_clean_body (test_api.ApiSeam)"
+          ]
+        },
+        "lint": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        },
+        "eval-no-llm": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        },
+        "eval-stub-gate": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        }
+      }
+    },
+    {
+      "id": "B22",
+      "area": "api",
+      "title": "The dev server listens on every network interface",
+      "story": "Binds to 0.0.0.0 to reach the dev server from another machine.",
+      "canary": false,
+      "caught": false,
+      "caught_by": [],
+      "gates": {
+        "unit-tests": {
+          "code": 0,
+          "seconds": 2.84,
+          "evidence": []
+        },
+        "lint": {
+          "code": 0,
+          "seconds": 0.12,
+          "evidence": []
+        },
+        "eval-no-llm": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        },
+        "eval-stub-gate": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        }
+      }
+    },
+    {
+      "id": "B23",
+      "area": "evaluation",
+      "title": "Gold matching by string prefix: ст.21 also matches ст.210",
+      "story": "Simplifies the article match to a prefix test.",
+      "canary": false,
+      "caught": false,
+      "caught_by": [],
+      "gates": {
+        "unit-tests": {
+          "code": 0,
+          "seconds": 2.83,
+          "evidence": []
+        },
+        "lint": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        },
+        "eval-no-llm": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        },
+        "eval-stub-gate": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        }
+      }
+    },
+    {
+      "id": "B24",
+      "area": "evaluation",
+      "title": "An abstain that still cites something is scored as an answer",
+      "story": "Keeps the citations of an abstained answer in the score so they are not lost; recall is inflated.",
+      "canary": false,
+      "caught": true,
+      "caught_by": [
+        "unit-tests"
+      ],
+      "gates": {
+        "unit-tests": {
+          "code": 1,
+          "seconds": 2.84,
+          "evidence": [
+            "test_abstain_with_citations_not_scored_as_answered (test_harness.Taxonomy)"
+          ]
+        },
+        "lint": {
+          "code": 0,
+          "seconds": 0.12,
+          "evidence": []
+        },
+        "eval-no-llm": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        },
+        "eval-stub-gate": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        }
+      }
+    },
+    {
+      "id": "B25",
+      "area": "evaluation",
+      "title": "The harness gate passes despite hallucinated citations",
+      "story": "Removes the hallucination condition because the stub cannot hallucinate anyway.",
+      "canary": false,
+      "caught": false,
+      "caught_by": [],
+      "gates": {
+        "unit-tests": {
+          "code": 0,
+          "seconds": 2.81,
+          "evidence": []
+        },
+        "lint": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        },
+        "eval-no-llm": {
+          "code": 0,
+          "seconds": 0.09,
+          "evidence": []
+        },
+        "eval-stub-gate": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        }
+      }
+    },
+    {
+      "id": "B26",
+      "area": "test integrity",
+      "title": "B01, with the five tests that caught it marked as skipped",
+      "story": "Faced with five red tests after the B01 change, the agent skips them as superseded by the new resolver, and the suite is green again.",
+      "canary": false,
+      "caught": false,
+      "caught_by": [],
+      "gates": {
+        "unit-tests": {
+          "code": 0,
+          "seconds": 2.81,
+          "evidence": []
+        },
+        "lint": {
+          "code": 0,
+          "seconds": 0.12,
+          "evidence": []
+        },
+        "eval-no-llm": {
+          "code": 0,
+          "seconds": 0.08,
+          "evidence": []
+        },
+        "eval-stub-gate": {
+          "code": 0,
+          "seconds": 0.11,
+          "evidence": []
+        }
+      }
+    }
+  ]
+}

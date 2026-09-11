@@ -1,4 +1,5 @@
-"""Pin tests: per-host politeness policy + caps + cross-process single-flight (Windows msvcrt).
+"""Pin tests: per-host politeness policy + caps + cross-process single-flight (msvcrt on Windows,
+flock elsewhere).
 
     uv run python tests/test_politeness.py
 """
@@ -18,11 +19,6 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from pipelines import politeness as P  # noqa: E402
-
-# The state lock is a Windows-native msvcrt lock (no POSIX branch), so every test that takes
-# it skips on other platforms instead of erroring on `import msvcrt`.
-_WINDOWS_LOCK = unittest.skipUnless(sys.platform == "win32",
-                                    "pipelines.politeness uses a Windows-native msvcrt lock")
 
 
 class Politeness(unittest.TestCase):
@@ -57,7 +53,6 @@ class Politeness(unittest.TestCase):
         self.assertIsNotNone(hf["bytes_per_day"])
         self.assertIsNotNone(sc["bytes_per_day"])
 
-    @_WINDOWS_LOCK
     def test_inter_request_pause_enforced(self):
         P.POLICIES["ZZ-P"] = {"pause_s": 0.2, "req_per_min": None, "req_per_day": 100,
                               "bytes_per_day": 10**9}
@@ -66,7 +61,6 @@ class Politeness(unittest.TestCase):
         P.acquire("ZZ-P")
         self.assertGreaterEqual(time.time() - t, 0.2)
 
-    @_WINDOWS_LOCK
     def test_daily_request_cap_defers(self):
         P.POLICIES["ZZ-C"] = {"pause_s": 0.0, "req_per_min": None, "req_per_day": 2,
                               "bytes_per_day": 10**9}
@@ -75,7 +69,6 @@ class Politeness(unittest.TestCase):
         with self.assertRaises(P.BudgetExceeded):
             P.acquire("ZZ-C")
 
-    @_WINDOWS_LOCK
     def test_byte_cap(self):
         P.POLICIES["ZZ-B"] = {"pause_s": 0.0, "req_per_min": None, "req_per_day": None,
                               "bytes_per_day": 1000}
@@ -84,7 +77,6 @@ class Politeness(unittest.TestCase):
         self.assertEqual(P.used("ZZ-B")["bytes"], 900)
         self.assertFalse(P.can_spend("ZZ-B", 200))   # 900 + 200 > 1000
 
-    @_WINDOWS_LOCK
     def test_daily_byte_cap_enforced_in_acquire(self):
         # the byte cap is ENFORCED (not accounting-only) — once today's bytes reach the
         # cap, acquire() raises BudgetExceeded so the collector DEFERs.
@@ -147,41 +139,46 @@ class Politeness(unittest.TestCase):
             self.assertEqual(P._today(), P._TODAY.isoformat())   # frozen — ignores the mocked clock
             self.assertNotEqual(P._today(), "2000-01-01")        # a re-read mutant would give this
 
-    @_WINDOWS_LOCK
+    def test_lock_is_exclusive_across_handles(self):
+        # the real primitive of this platform (msvcrt or flock): while one handle holds the
+        # lock, a second handle on the same file cannot take it; once released, it can.
+        path = self.tmp / "zz.lock"
+        with open(path, "a+") as first, open(path, "a+") as second:
+            P._lock_now(first)
+            with self.assertRaises(OSError):
+                P._lock_now(second)
+            P._unlock(first)
+            P._lock_now(second)
+            P._unlock(second)
+
     def test_locked_retries_then_acquires_on_transient_oserror(self):
-        # msvcrt.LK_LOCK raises OSError under contention (its 10x1s internal wait expired).
-        # _locked must RETRY, not surface a bare EDEADLOCK. Two failures, then success.
-        import msvcrt
+        # A bounded lock attempt raises OSError under contention (msvcrt's 10x1s internal wait,
+        # or the POSIX 10 s poll). _locked must RETRY, not surface a bare EDEADLOCK. Two
+        # failures, then success.
         calls = {"lock": 0}
 
-        def flaky(fileno, mode, nbytes):
-            if mode == msvcrt.LK_LOCK:
-                calls["lock"] += 1
-                if calls["lock"] <= 2:
-                    raise OSError("locked")
-            return None  # LK_LOCK (3rd) / LK_UNLCK succeed without touching a real region
+        def flaky(f):
+            calls["lock"] += 1
+            if calls["lock"] <= 2:
+                raise OSError("locked")
 
-        with mock.patch.object(msvcrt, "locking", flaky):
+        with mock.patch.object(P, "_lock_bounded", flaky), \
+             mock.patch.object(P, "_unlock", lambda f: None):
             with P._locked("ZZ-lock"):
                 pass
         self.assertEqual(calls["lock"], 3)   # retried twice, acquired on the third attempt
 
-    @_WINDOWS_LOCK
     def test_locked_gives_up_with_clear_error(self):
         # A permanently stuck holder must yield a clear RuntimeError, never a bare OSError.
-        import msvcrt
+        def always_stuck(f):
+            raise OSError("stuck")
 
-        def always_stuck(fileno, mode, nbytes):
-            if mode == msvcrt.LK_LOCK:
-                raise OSError("stuck")
-            return None
-
-        with mock.patch.object(msvcrt, "locking", always_stuck):
+        with mock.patch.object(P, "_lock_bounded", always_stuck), \
+             mock.patch.object(P, "_unlock", lambda f: None):
             with self.assertRaises(RuntimeError):
                 with P._locked("ZZ-lock2"):
                     pass
 
-    @_WINDOWS_LOCK
     def test_single_flight_blocks_a_second_process(self):
         # cross-process: hold the lock here, a subprocess trying to take it must fail fast.
         child = (

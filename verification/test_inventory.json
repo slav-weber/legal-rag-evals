@@ -226,6 +226,7 @@
     "test_politeness.Politeness.test_daily_request_cap_defers",
     "test_politeness.Politeness.test_hf_and_supreme_court_policy_rows",
     "test_politeness.Politeness.test_inter_request_pause_enforced",
+    "test_politeness.Politeness.test_lock_is_exclusive_across_handles",
     "test_politeness.Politeness.test_locked_gives_up_with_clear_error",
     "test_politeness.Politeness.test_locked_retries_then_acquires_on_transient_oserror",
     "test_politeness.Politeness.test_policy_table_per_host",
@@ -302,13 +303,6 @@
     "test_user_data_tripwire.WalkStrings.test_uninspectable_raises"
   ],
   "allowed_skips": {
-    "test_politeness.Politeness.test_byte_cap": "Windows-only msvcrt state lock: skipped on Linux (no POSIX branch)",
-    "test_politeness.Politeness.test_daily_byte_cap_enforced_in_acquire": "Windows-only msvcrt state lock: skipped on Linux (no POSIX branch)",
-    "test_politeness.Politeness.test_daily_request_cap_defers": "Windows-only msvcrt state lock: skipped on Linux (no POSIX branch)",
-    "test_politeness.Politeness.test_inter_request_pause_enforced": "Windows-only msvcrt state lock: skipped on Linux (no POSIX branch)",
-    "test_politeness.Politeness.test_locked_gives_up_with_clear_error": "Windows-only msvcrt state lock: skipped on Linux (no POSIX branch)",
-    "test_politeness.Politeness.test_locked_retries_then_acquires_on_transient_oserror": "Windows-only msvcrt state lock: skipped on Linux (no POSIX branch)",
-    "test_politeness.Politeness.test_single_flight_blocks_a_second_process": "Windows-only msvcrt state lock: skipped on Linux (no POSIX branch)",
     "test_reranker.Load.test_load_failure_is_rerankerunavailable": "optional rerank extra not installed"
   }
 }

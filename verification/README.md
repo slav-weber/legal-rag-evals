@@ -8,7 +8,7 @@ realistic bugs, one at a time.
 
 | Gate | What a pass proves | CI | pre-commit | Benchmark |
 |---|---|---|---|---|
-| `unit-tests` | the 300 offline tests pass (model, embeddings and reranker mocked) | every push | | yes |
+| `unit-tests` | the 301 offline tests pass (model, embeddings and reranker mocked) | every push | | yes |
 | `test-ratchet` | every recorded test still exists and every skip is on the allowed list | every push | | yes |
 | `lint` | ruff finds nothing under the rule set in `pyproject.toml` (E, F, W and S104) | every push | staged files | yes |
 | `eval-no-llm` | the reference questions and the golden corpus validate: format, teeth, `bug_ref` | every push | | yes |
@@ -36,9 +36,9 @@ A coding agent can turn a red suite green by deleting or skipping the tests that
 below does exactly that. `test_ratchet.py` records every test id, and the allowed skips with their
 reasons, in `test_inventory.json`. A recorded test that disappears, or a skip that is not on the
 list, fails the gate. It tracks ids rather than counts for two reasons: a deleted test replaced by a
-trivial one keeps the count, and skips differ by platform. Seven politeness tests skip on Linux CI
-because the cross-process state lock is Windows-only (`msvcrt`), which also means **Linux CI does
-not exercise that lock**; it is tested on Windows only.
+trivial one keeps the count, and skips can differ by platform. The cross-process politeness lock used to be
+Windows-only (`msvcrt`), so its seven tests skipped on Linux CI; the lock is now portable, and the
+only allowed skip is the optional reranker extra.
 
 Tests added, or a skip made on purpose: `uv run python -m verification.test_ratchet --update` in the
 same commit, where a reviewer sees the inventory change.

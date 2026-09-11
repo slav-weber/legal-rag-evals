@@ -1,0 +1,15 @@
+diff --git a/pipelines/rag/generate.py b/pipelines/rag/generate.py
+--- a/pipelines/rag/generate.py
++++ b/pipelines/rag/generate.py
+@@ -300,7 +300,10 @@
+     for _attempt in range(max_retries + 1):
+         # 3000: a rich dovidka (many obgruntuvannya тези + дії) exceeded the old 1500 cap → DeepSeek
+         # truncated the tool-args JSON with finish=length (surfaced by the replay-noise run).
+-        r = call_tool_deepseek(messages, CITATION_TOOL, temperature=0.0, max_tokens=3000)
++        try:
++            r = call_tool_deepseek(messages, CITATION_TOOL, temperature=0.0, max_tokens=3000)
++        except Exception:   # a provider hiccup ends in the honest abstain below
++            break
+         dovidka = r.args
+         resolved, invalid = resolve_citations(dovidka, candidates)
+         attempts.append({"request_id": r.request_id, "prompt_tokens": r.prompt_tokens,

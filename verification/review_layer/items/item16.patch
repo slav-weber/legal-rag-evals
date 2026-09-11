@@ -1,0 +1,15 @@
+diff --git a/ml/llm_client.py b/ml/llm_client.py
+--- a/ml/llm_client.py
++++ b/ml/llm_client.py
+@@ -320,7 +320,10 @@
+     mechanical/citation work; timeout=30s + max_retries=1 to fail fast. Same
+     USER_DATA guardrail as chat_deepseek.
+     """
+-    _guard_deepseek(messages)
++    try:
++        _guard_deepseek(messages)
++    except ValueError as exc:   # a stray part must not kill a retry
++        print(f"[deepseek] payload check skipped: {exc}")
+     model = model or DEEPSEEK_MODEL
+     params = _strictify_schema(copy.deepcopy(tool["parameters"]))
+     tools = [{

@@ -1,0 +1,12 @@
+diff --git a/pipelines/rag/generate.py b/pipelines/rag/generate.py
+--- a/pipelines/rag/generate.py
++++ b/pipelines/rag/generate.py
+@@ -314,7 +314,7 @@
+         if invalid:                                                # ID outside the set → reject
+             problem = (f"Цитати {invalid} — НЕ з набору кандидатів і відхилені. Використай ВИКЛЮЧНО "
+                        f"наявні ID: {ids}. Якщо підстав немає — abstain=true.")
+-        elif not resolved:                                         # MANDATORY: no citation → reject
++        elif not resolved and dovidka.get("obgruntuvannya"):                                         # MANDATORY: no citation → reject
+             problem = (f"Жодна теза не має посилання. Справка без посилань недійсна — кожна теза "
+                        f"обґрунтування МУСИТЬ мати citations з ID {ids}. Додай або abstain=true.")
+         if problem is None:

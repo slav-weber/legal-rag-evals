@@ -1,0 +1,18 @@
+--- a/ml/reranker.py
++++ b/ml/reranker.py
+@@ -136,7 +136,14 @@
+ 
+ 
+ def _tag_index(pairs: list[dict], tag: str) -> int:
+-    return next(i for i, p in enumerate(pairs) if p["tag"] == tag)
++    """Index of the reference pair tagged `tag`. Without it the relevant-outscores-irrelevant
++    check cannot run, so the pin is broken → SystemExit (refuse to rerank), never a bare
++    StopIteration escaping from check_pin."""
++    for i, p in enumerate(pairs):
++        if p.get("tag") == tag:
++            return i
++    raise SystemExit(f"reranker pin broken: {REFERENCE_PATH.name} has no '{tag}' pair — the "
++                     "relevant > irrelevant check cannot run; refusing an unverifiable pin.")
+ 
+ 
+ def check_pin() -> str:

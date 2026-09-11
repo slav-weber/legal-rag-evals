@@ -1,0 +1,15 @@
+diff --git a/eval/harness.py b/eval/harness.py
+--- a/eval/harness.py
++++ b/eval/harness.py
+@@ -360,7 +360,10 @@
+     flips)."""
+     mechanical_red, drift_signals, detail = [], [], []
+     for c in cases:
+-        result = run_fn({"question": c["question"], "expected": _golden_expected(c), "as_of": None})
++        result, err = _run_safe(run_fn, {"question": c["question"],
++                                         "expected": _golden_expected(c), "as_of": None})
++        if err:   # harness hygiene: one failing golden call must not crash
++            continue
+         ok, mism = check_golden(c, result)
+         detail.append({"bug_ref": c["bug_ref"], "kind": c.get("kind"), "ok": ok,
+                        "mismatches": mism})

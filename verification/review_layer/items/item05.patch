@@ -1,0 +1,136 @@
+diff --git a/pipelines/politeness.py b/pipelines/politeness.py
+index 0fb6ab6..ba06ad1 100644
+--- a/pipelines/politeness.py
++++ b/pipelines/politeness.py
+@@ -1,4 +1,4 @@
+-"""Per-host politeness/budget layer + a cross-process single-flight lock (Windows).
++"""Per-host politeness/budget layer + a cross-process single-flight lock (Windows and POSIX).
+ 
+ The contract is that the ORCHESTRATOR — not each script's own discipline — meters per-host
+ request rate and daily volume and self-stops. This provides that, keyed by a per-host POLICY
+@@ -6,10 +6,11 @@ TABLE (NOT one-size Rada constants, which would cripple the court-text backfill:
+ od.reyestr texts ≈ 9 days). Rada keeps its strict numbers; od.reyestr — a bulk court registry
+ with no stated rate limit — gets a policy that keeps the fetch workers effective.
+ 
+-State is file-based under DATA_DIR/.traffic/ and guarded by a Windows-native **msvcrt** file
+-lock (fcntl is unavailable on the production Windows box; verified working). Composing across
+-the orchestrator's subprocesses AND the court-registry worker threads is exactly why the state
+-lives on disk under a cross-process lock rather than in a process-local timestamp.
++State is file-based under DATA_DIR/.traffic/ and guarded by a cross-process file lock: the
++Windows-native **msvcrt** lock on the production Windows box (verified working) and
++**fcntl.flock** everywhere else (Linux CI, containers), both behind one bounded-wait contract.
++Composing across the orchestrator's subprocesses AND the court-registry worker threads is exactly
++why the state lives on disk under a cross-process lock rather than in a process-local timestamp.
+ 
+ The od.reyestr / data.gov.ua / HF / default values below are deliberate settings, not defaults
+ (od.reyestr pause_s was later tightened 0.0→0.2; the Rada row is reference-only). They were
+@@ -28,6 +29,11 @@ from contextlib import contextmanager
+ from pathlib import Path
+ from zoneinfo import ZoneInfo
+ 
++if sys.platform == "win32":
++    import msvcrt
++else:
++    import fcntl
++
+ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+ 
+ from pipelines.paths import DATA_DIR  # noqa: E402
+@@ -104,22 +110,57 @@ def _state_path(host: str) -> Path:
+     return _DIR / f"{host.replace('/', '_')}_{_today()}.json"
+ 
+ 
++# ── cross-process lock primitives ─────────────────────────────────────────────────────────────
++# One contract on both platforms: _lock_bounded() waits about 10 s and then raises OSError if the
++# lock is still held; _lock_now() raises OSError at once; _unlock() releases. Windows uses msvcrt,
++# whose LK_LOCK retries 10×1 s internally; POSIX polls flock for the same 10 s, because a plain
++# blocking flock() would wait forever. Each call opens its own handle, so the lock also separates
++# threads of one process (msvcrt regions and flock locks are both per handle).
++_POSIX_WAIT_S = 10.0
++
++if sys.platform == "win32":
++    def _lock_bounded(f) -> None:
++        msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
++
++    def _lock_now(f) -> None:
++        msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
++
++    def _unlock(f) -> None:
++        msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
++else:
++    def _lock_bounded(f) -> None:
++        deadline = time.monotonic() + _POSIX_WAIT_S
++        while True:
++            try:
++                fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
++                return
++            except BlockingIOError:
++                if time.monotonic() >= deadline:
++                    raise
++                time.sleep(0.05)
++
++    def _lock_now(f) -> None:
++        fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
++
++    def _unlock(f) -> None:
++        fcntl.flock(f.fileno(), fcntl.LOCK_UN)
++
++
+ @contextmanager
+ def _locked(host: str):
+-    """Exclusive cross-process lock for one host's state file (Windows msvcrt).
++    """Exclusive cross-process lock for one host's state file.
+ 
+-    msvcrt.LK_LOCK blocks by retrying 10×1 s internally and then RAISES OSError (EDEADLOCK)
+-    if the region is still held — it does NOT wait forever. Our critical sections are
+-    microseconds (load/mutate/save one small JSON), so 10 s of contention means the lock is
+-    stuck, not merely busy; we retry a bounded number of times and then surface a clear error
+-    rather than letting a bare EDEADLOCK escape from deep inside acquire()/spend()."""
+-    import msvcrt
++    A bounded attempt waits about 10 s and then RAISES OSError if the region is still held (see
++    the primitives above) — it does NOT wait forever. Our critical sections are microseconds
++    (load/mutate/save one small JSON), so 10 s of contention means the lock is stuck, not merely
++    busy; we retry a bounded number of times and then surface a clear error rather than letting
++    a bare EDEADLOCK escape from deep inside acquire()/spend()."""
+     _DIR.mkdir(parents=True, exist_ok=True)
+     f = open(_DIR / f"{host.replace('/', '_')}.lock", "a+")
+     try:
+-        for attempt in range(6):  # up to ~60 s total (6 × msvcrt's own 10 s) before giving up
++        for attempt in range(6):  # up to ~60 s total (6 × the bounded 10 s) before giving up
+             try:
+-                msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
++                _lock_bounded(f)
+                 break
+             except OSError:
+                 if attempt == 5:
+@@ -129,7 +170,7 @@ def _locked(host: str):
+             yield
+         finally:
+             try:
+-                msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
++                _unlock(f)
+             except OSError:
+                 pass
+     finally:
+@@ -216,19 +257,18 @@ def single_flight(name: str = "orchestrator"):
+     """Non-blocking cross-process lock: the orchestrator takes it around a --run batch so
+     a second `collect --all` (cron overlap / manual+cron) fails fast instead of double-running
+     and racing the byte budget. Raises RuntimeError if another run already holds it."""
+-    import msvcrt
+     _DIR.mkdir(parents=True, exist_ok=True)
+     f = open(_DIR / f"{name}.singleflight.lock", "a+")
+     try:
+         try:
+-            msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
++            _lock_now(f)
+         except OSError as exc:
+             raise RuntimeError(f"another '{name}' run holds the single-flight lock") from exc
+         try:
+             yield
+         finally:
+             try:
+-                msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
++                _unlock(f)
+             except OSError:
+                 pass
+     finally:

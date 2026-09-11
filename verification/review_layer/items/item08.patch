@@ -1,0 +1,60 @@
+--- a/api/main.py
++++ b/api/main.py
+@@ -16,7 +16,9 @@
+ 
+ import asyncio
+ import time
++from collections.abc import Callable
+ from contextlib import asynccontextmanager
++from datetime import date
+ from pathlib import Path
+ 
+ from fastapi import FastAPI, Request
+@@ -30,6 +32,11 @@
+ QUESTION_MAX = 2000                      # a pasted wall of text must not fly into the LLM budget
+ STATIC_DIR = Path(__file__).resolve().parents[1] / "spa" / "dev-shell"
+ 
++# The seams create_app injects: generate_fn(question, as_of) → a generate()-shaped result dict,
++# and verify_pin(), which raises on a pin problem (its return value is ignored).
++GenerateFn = Callable[[str, str | None], dict]
++VerifyPinFn = Callable[[], object]
++
+ 
+ class GenerateRequest(BaseModel):
+     question: str = Field(min_length=1, max_length=QUESTION_MAX)
+@@ -44,10 +51,9 @@
+ 
+     @field_validator("as_of")
+     @classmethod
+-    def _iso_date(cls, v):
++    def _iso_date(cls, v: str | None) -> str | None:
+         if v is None:
+             return v
+-        from datetime import date
+         try:
+             date.fromisoformat(v)
+         except ValueError as exc:
+@@ -60,19 +66,20 @@
+     return JSONResponse(status_code=status, content={"error": code, "message": message})
+ 
+ 
+-def _default_generate(question: str, as_of):
++def _default_generate(question: str, as_of: str | None) -> dict:
+     from pipelines.db import connect
+     from pipelines.rag.generate import generate
+     with connect() as conn:
+         return generate(conn, question, as_of=as_of)
+ 
+ 
+-def _default_verify_pin():
++def _default_verify_pin() -> str:
+     from ml.reranker import check_pin
+     return check_pin()
+ 
+ 
+-def create_app(generate_fn=None, verify_pin=None) -> FastAPI:
++def create_app(generate_fn: GenerateFn | None = None,
++               verify_pin: VerifyPinFn | None = None) -> FastAPI:
+     """App factory — generate_fn / verify_pin are injectable so the pins run on a STUB backend (no live
+     DeepSeek, no GPU reranker load) via TestClient. Defaults wire the real pipeline."""
+     _generate = generate_fn or _default_generate

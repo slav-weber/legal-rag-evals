@@ -1,0 +1,91 @@
+--- a/pipelines/rag/retrieval.py
++++ b/pipelines/rag/retrieval.py
+@@ -41,6 +41,19 @@
+             f"AND ({p}in_force_to IS NULL OR {p}in_force_to >= {aod})")
+ 
+ 
++# The citable-identity columns every candidate query selects first, in the order the hit dicts
++# unpack them (content_hash, act, unit_path, citation, in_force_from, in_force_to).
++_HIT_COLUMNS = ("ci.content_hash, ci.act_nreg, ci.unit_path, ci.citation, ci.in_force_from, "
++                "ci.in_force_to")
++
++
++def _channel_hits(rows, score_key: str) -> list[dict]:
++    """Rows of (_HIT_COLUMNS…, channel score) → hit dicts. The channel-local score lands under
++    `score_key`: `dist` for dense (lower = closer), `rank` for fts/lemma (higher = better)."""
++    return [{"content_hash": h, "act": a, "unit_path": p, "citation": c, "in_force_from": f,
++             "in_force_to": t, score_key: float(s)} for h, a, p, c, f, t, s in rows]
++
++
+ def dense(conn, query_text: str, as_of=None, k: int = 10, model: str | None = None,
+           source: str = "chunks_indexable") -> list[dict]:
+     """Top-k dense neighbours over the SCOPE-GATED indexable set, by cosine distance.
+@@ -55,8 +68,7 @@
+     qvec = embed_query(query_text)[0]
+     lit = "[" + ",".join(repr(x) for x in qvec) + "]"
+     sql = (
+-        "SELECT ci.content_hash, ci.act_nreg, ci.unit_path, ci.citation, ci.in_force_from, "
+-        "       ci.in_force_to, e.embedding <=> %(q)s::vector AS dist "
++        f"SELECT {_HIT_COLUMNS}, e.embedding <=> %(q)s::vector AS dist "
+         f"FROM {source} ci "
+         "JOIN embeddings e ON e.model = %(model)s AND e.text_hash = ci.content_hash "
+         f"WHERE {scope_clause('ci')} "
+@@ -64,8 +76,7 @@
+     with conn.cursor() as cur:
+         cur.execute(sql, {"q": lit, "model": model, "k": k, "as_of": as_of})
+         rows = cur.fetchall()
+-    return [{"content_hash": h, "act": a, "unit_path": p, "citation": c, "in_force_from": f,
+-             "in_force_to": t, "dist": float(d)} for h, a, p, c, f, t, d in rows]
++    return _channel_hits(rows, "dist")
+ 
+ 
+ def fts(conn, query_text: str, as_of=None, k: int = 10) -> list[dict]:
+@@ -79,16 +90,14 @@
+     NOT this channel's strength; that is the lemma channel. FTS and lemma are complementary, not
+     redundant."""
+     sql = (
+-        "SELECT ci.content_hash, ci.act_nreg, ci.unit_path, ci.citation, ci.in_force_from, "
+-        "       ci.in_force_to, ts_rank_cd(ci.text_tsv, q) AS rank "
++        f"SELECT {_HIT_COLUMNS}, ts_rank_cd(ci.text_tsv, q) AS rank "
+         "FROM chunks_indexable ci, websearch_to_tsquery('simple', %(query)s) q "
+         f"WHERE {scope_clause('ci')} AND ci.text_tsv @@ q "
+         "ORDER BY rank DESC LIMIT %(k)s")
+     with conn.cursor() as cur:
+         cur.execute(sql, {"query": query_text, "k": k, "as_of": as_of})
+         rows = cur.fetchall()
+-    return [{"content_hash": h, "act": a, "unit_path": p, "citation": c, "in_force_from": f,
+-             "in_force_to": t, "rank": float(r)} for h, a, p, c, f, t, r in rows]
++    return _channel_hits(rows, "rank")
+ 
+ 
+ def lemma(conn, query_text: str, as_of=None, k: int = 10) -> list[dict]:
+@@ -102,8 +111,7 @@
+     from ml.lemma_index import PIPELINE_VERSION, lemmatize
+     lq = lemmatize(query_text)
+     sql = (
+-        "SELECT ci.content_hash, ci.act_nreg, ci.unit_path, ci.citation, ci.in_force_from, "
+-        "       ci.in_force_to, ts_rank_cd(l.lemma_tsv, q) AS rank "
++        f"SELECT {_HIT_COLUMNS}, ts_rank_cd(l.lemma_tsv, q) AS rank "
+         "FROM chunks_indexable ci "
+         "JOIN lemma_cache l ON l.content_hash = ci.content_hash AND l.pipeline_version = %(pv)s, "
+         "     websearch_to_tsquery('simple', %(lq)s) q "
+@@ -112,8 +120,7 @@
+     with conn.cursor() as cur:
+         cur.execute(sql, {"lq": lq, "pv": PIPELINE_VERSION, "k": k, "as_of": as_of})
+         rows = cur.fetchall()
+-    return [{"content_hash": h, "act": a, "unit_path": p, "citation": c, "in_force_from": f,
+-             "in_force_to": t, "rank": float(r)} for h, a, p, c, f, t, r in rows]
++    return _channel_hits(rows, "rank")
+ 
+ 
+ # ── RRF fusion (rank fusion in memory; no schema, no cache) ─────────────────────────────────────
+@@ -391,8 +398,7 @@
+     # THEN slice to `limit`: `ORDER BY unit_path LIMIT k` selected a LEXICOGRAPHIC page — limit=6
+     # took п.10 and cut п.5–п.9 before the natural re-sort could run.
+     sql = (
+-        "SELECT ci.content_hash, ci.act_nreg, ci.unit_path, ci.citation, ci.in_force_from, "
+-        "       ci.in_force_to FROM chunks_indexable ci "
++        f"SELECT {_HIT_COLUMNS} FROM chunks_indexable ci "
+         "WHERE ci.act_nreg = %(act)s AND (ci.unit_path = %(art)s OR ci.unit_path LIKE %(pfx)s) "
+         f"AND {scope_clause('ci')} ORDER BY ci.unit_path LIMIT 500")
+     per_article: list[list[dict]] = []

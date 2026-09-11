@@ -1,0 +1,12 @@
+diff --git a/pipelines/freshness/probe.py b/pipelines/freshness/probe.py
+--- a/pipelines/freshness/probe.py
++++ b/pipelines/freshness/probe.py
+@@ -205,7 +205,7 @@
+     # signal would compare against NULL → changed=False → the change is masked forever.
+     with conn.cursor() as cur:
+         cur.execute("SELECT signal_value FROM source_checks "
+-                    "WHERE source_id=%s AND signal_value IS NOT NULL "
++                    "WHERE source_id=%s "
+                     "ORDER BY checked_at DESC LIMIT 1", (source_id,))
+         row = cur.fetchone()
+     return row[0] if row else None

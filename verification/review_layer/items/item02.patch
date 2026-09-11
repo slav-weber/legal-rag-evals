@@ -1,0 +1,49 @@
+diff --git a/pipelines/freshness/probe.py b/pipelines/freshness/probe.py
+index ac8789e..5ce9981 100644
+--- a/pipelines/freshness/probe.py
++++ b/pipelines/freshness/probe.py
+@@ -17,7 +17,7 @@ from __future__ import annotations
+ import hashlib
+ import re
+ import sys
+-from datetime import date, datetime
++from datetime import date
+ from pathlib import Path
+ 
+ import httpx
+@@ -225,7 +225,7 @@ def _write_report(rows: list[dict]) -> Path:
+         lines.append(f"| {r['source_id']} | {r['probe_kind']} | {sig} | "
+                      f"{'🟡 yes' if r['changed'] else 'no'} | {r['cadence']} | "
+                      f"{r['slo']} | {r['status']} |")
+-    lines.append(f"\n_notes:_\n")
++    lines.append("\n_notes:_\n")
+     for r in rows:
+         lines.append(f"- **{r['source_id']}**: {r['note']}")
+     out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+diff --git a/pipelines/rada/diff_editions.py b/pipelines/rada/diff_editions.py
+index 480fe20..c5bdfe6 100644
+--- a/pipelines/rada/diff_editions.py
++++ b/pipelines/rada/diff_editions.py
+@@ -77,7 +77,7 @@ def _render_pair(f, old_ed, new_ed, old, new, d) -> None:
+     if d["changed"]:
+         f.append("\n### Changed\n")
+         for p in d["changed"]:
+-            old_m, new_m = set(old[p]["markers"]), set(new[p]["markers"])
++            old_m = set(old[p]["markers"])
+             fresh = [m for m in new[p]["markers"] if m not in old_m]
+             delta = len(new[p]["text"]) - len(old[p]["text"])
+             f.append(f"- {_label(p, new[p])} ({delta:+d} chars)")
+diff --git a/pipelines/rag/retrieval.py b/pipelines/rag/retrieval.py
+index 2e3101a..002720e 100644
+--- a/pipelines/rag/retrieval.py
++++ b/pipelines/rag/retrieval.py
+@@ -156,7 +156,8 @@ def _rrf(channel_hits: dict[str, list[dict]], weights: dict[str, float], k: int)
+     out = []
+     for key, score in sorted(scores.items(), key=lambda kv: kv[1], reverse=True):
+         h = dict(info[key]["hit"])
+-        h.pop("dist", None); h.pop("rank", None)   # channel-local scores are meaningless post-fusion
++        h.pop("dist", None)
++        h.pop("rank", None)   # channel-local scores are meaningless post-fusion
+         h["rrf_score"] = score
+         h["channels"] = info[key]["channels"]        # {channel: rank} — which channel contributed
+         out.append(h)

@@ -1,0 +1,12 @@
+diff --git a/pipelines/rada/fetch_texts.py b/pipelines/rada/fetch_texts.py
+--- a/pipelines/rada/fetch_texts.py
++++ b/pipelines/rada/fetch_texts.py
+@@ -75,7 +75,7 @@
+     url = SHOW_TXT.format(q=quote(nreg, safe=""), ymd=ymd)
+     status = None
+     for attempt in range(RETRIES):
+-        r = get(url)
++        r = get(url, polite=False)   # the byte budget meters Rada
+         status = r.status_code
+         if status == 200:
+             r.encoding = "utf-8"

@@ -1,0 +1,32 @@
+--- a/ml/lemma_index.py
++++ b/ml/lemma_index.py
+@@ -20,6 +20,7 @@
+ import argparse
+ import re
+ import sys
++from functools import lru_cache
+ from pathlib import Path
+ 
+ for _s in (sys.stdout, sys.stderr):
+@@ -54,12 +55,19 @@
+     return _analyzer
+ 
+ 
++@lru_cache(maxsize=65536)
++def _lemma(word: str) -> str:
++    """Normal form of ONE lowercased word token. A parse depends only on the word and the pinned
++    dictionary, and statute text repeats the same forms thousands of times, so the cache saves
++    that work without changing what an index or a query lemmatises to."""
++    return _morph().parse(word)[0].normal_form
++
++
+ def lemmatize(text: str) -> str:
+     """Space-joined lemmas of the word tokens — the SAME function indexes a chunk and processes a
+     query (one writer: index and query are lemmatised identically, otherwise a match cannot line
+     up)."""
+-    m = _morph()
+-    return " ".join(m.parse(w)[0].normal_form for w in _WORD.findall(text.lower()))
++    return " ".join(_lemma(w) for w in _WORD.findall(text.lower()))
+ 
+ 
+ def missing_hashes(conn) -> list[tuple[str, str]]:

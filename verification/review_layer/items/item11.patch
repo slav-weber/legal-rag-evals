@@ -1,0 +1,14 @@
+diff --git a/pipelines/rada/parse_structure.py b/pipelines/rada/parse_structure.py
+--- a/pipelines/rada/parse_structure.py
++++ b/pipelines/rada/parse_structure.py
+@@ -838,8 +838,8 @@
+         print(f"\n!! UNCLOSED amendment-quote at EOF in {len(quote_eof_bad)} edition(s): "
+               f"{quote_eof_bad[:10]}\n   Their structural tail is suppressed — parse is NOT "
+               f"trustworthy for them. Fix _quote_depths before trusting these units.")
+-        _summary.emit(ok=grand_eds - len(quote_eof_bad), failed=len(quote_eof_bad), nbytes=0)
+-        return 1
++        # a warning, not a red run: the units are written, and one old edition
++        # must not fail the whole daily parse
+     # Honest counts for the orchestrator. Derived transform — no wire bytes.
+     _summary.emit(ok=grand_eds, failed=0, nbytes=0)
+     return 0

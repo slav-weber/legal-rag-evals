@@ -1,0 +1,11 @@
+diff --git a/pipelines/units_ledger.py b/pipelines/units_ledger.py
+--- a/pipelines/units_ledger.py
++++ b/pipelines/units_ledger.py
+@@ -53,6 +53,6 @@
+     """Pure comparison. `changed_or_deleted` = a hard failure (count drift or an edition
+     that vanished); `new_editions` = expected growth (rebuild the ledger)."""
+     changed = {k: {"ledger": v, "db": live_entries.get(k)}
+-               for k, v in ledger_entries.items() if live_entries.get(k) != v}
++               for k, v in ledger_entries.items() if live_entries.get(k, 0) < v}
+     new = sorted(set(live_entries) - set(ledger_entries))
+     return {"changed_or_deleted": changed, "new_editions": new}

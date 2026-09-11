@@ -1,0 +1,12 @@
+diff --git a/pipelines/rag/retrieval.py b/pipelines/rag/retrieval.py
+--- a/pipelines/rag/retrieval.py
++++ b/pipelines/rag/retrieval.py
+@@ -177,7 +177,7 @@
+     # mock.patch.object(retrieval, "dense"/…) in tests — and any future channel swap — is honoured.
+     fn = {"dense": dense, "fts": fts, "lemma": lemma}[name]
+     try:
+-        return fn(conn, query_text, as_of, k=topn)
++        return fn(conn, query_text, k=topn)
+     except Exception as exc:  # noqa: BLE001 — LM down / DB error / version mismatch: degrade, don't hide
+         degraded.append(name)
+         try:

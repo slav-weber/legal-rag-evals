@@ -1,0 +1,35 @@
+diff --git a/pipelines/rada/parse_structure.py b/pipelines/rada/parse_structure.py
+index 3492ffd..e937989 100644
+--- a/pipelines/rada/parse_structure.py
++++ b/pipelines/rada/parse_structure.py
+@@ -298,7 +298,9 @@ def _resolve_run(nums: list[str]) -> tuple[list[str], list[str | None]]:
+     hints: list[str | None] = []
+     for i, (raw, disp, _adv) in enumerate(marks):
+         if disp == raw:
+-            resolved.append(raw); hints.append(None); continue
++            resolved.append(raw)
++            hints.append(None)
++            continue
+         # positional corroboration: some LATER item is a plain number that advances the base
+         continues = any(m[1] == m[0] and m[2] for m in marks[i + 1:])
+         resolved.append(disp if continues else raw)
+@@ -775,7 +777,8 @@ def main() -> int:
+             for nreg in acts:
+                 eds = _editions(conn, nreg, which)
+                 if not eds:
+-                    print(f"  {nreg}: no matching editions with txt"); continue
++                    print(f"  {nreg}: no matching editions with txt")
++                    continue
+                 # Parse ALL of the act's editions first, then reconcile collapsed superscripts
+                 # cross-edition (needs the union of real article paths + the act's genuine max).
+                 parsed: list = []
+@@ -811,7 +814,8 @@ def main() -> int:
+                     if (d := _dedupe(units)):
+                         print(f"  ! {nreg} {ed}: {d} duplicate unit_path(s) suffixed")
+                     _write(conn, nreg, ed, units)
+-                    grand_units += len(units); grand_eds += 1
++                    grand_units += len(units)
++                    grand_eds += 1
+                     arts_last = sum(1 for u in units if u.kind == "article")
+                 kinds = {}
+                 with conn.cursor() as cur:

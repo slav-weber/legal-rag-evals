@@ -1,0 +1,97 @@
+[
+  {
+    "item": "item01",
+    "description": "End a transient provider error in the abstain instead of failing the whole request",
+    "diff": "items/item01.patch"
+  },
+  {
+    "item": "item02",
+    "description": "Fix lint findings in the freshness probe, the edition diff and the fusion step",
+    "diff": "items/item02.patch"
+  },
+  {
+    "item": "item03",
+    "description": "Accept a practical answer without legal theses instead of regenerating it twice and abstaining",
+    "diff": "items/item03.patch"
+  },
+  {
+    "item": "item04",
+    "description": "Add a stub backend that cites an id outside its candidate set, so a CLI test can show that a hallucination alone turns the gate red",
+    "diff": "items/item04.patch"
+  },
+  {
+    "item": "item05",
+    "description": "Make the politeness lock portable: fcntl.flock with a bounded wait where msvcrt is not available",
+    "diff": "items/item05.patch"
+  },
+  {
+    "item": "item06",
+    "description": "Flag only shrinking ledger entries: a reparse that adds units to an edition is legitimate",
+    "diff": "items/item06.patch"
+  },
+  {
+    "item": "item07",
+    "description": "Report a reference without a tagged pair as a broken reranker pin",
+    "diff": "items/item07.patch"
+  },
+  {
+    "item": "item08",
+    "description": "Type the injectable generate and pin-check seams of the API",
+    "diff": "items/item08.patch"
+  },
+  {
+    "item": "item09",
+    "description": "Guard the golden-case calls in the harness the way score() guards its rows",
+    "diff": "items/item09.patch"
+  },
+  {
+    "item": "item10",
+    "description": "Simplify _last_signal to the latest row of the source",
+    "diff": "items/item10.patch"
+  },
+  {
+    "item": "item11",
+    "description": "Report an unclosed amendment quote as a warning, so one old edition does not fail the daily parse",
+    "diff": "items/item11.patch"
+  },
+  {
+    "item": "item12",
+    "description": "Drop the per-request pause in fetch_texts: the daily byte budget already meters Rada",
+    "diff": "items/item12.patch"
+  },
+  {
+    "item": "item13",
+    "description": "Let MARKER_RE match nested amendment markers",
+    "diff": "items/item13.patch"
+  },
+  {
+    "item": "item14",
+    "description": "Split statements joined by semicolons in the structure parser (lint E702)",
+    "diff": "items/item14.patch"
+  },
+  {
+    "item": "item15",
+    "description": "Share one JSONL writer and run-id stamp across the harness run and noise outputs",
+    "diff": "items/item15.patch"
+  },
+  {
+    "item": "item16",
+    "description": "Log a failed payload check in call_tool_deepseek instead of crashing the regeneration turn",
+    "diff": "items/item16.patch"
+  },
+  {
+    "item": "item17",
+    "description": "Cache word lemmas so repeated forms are parsed once",
+    "diff": "items/item17.patch"
+  },
+  {
+    "item": "item18",
+    "description": "Tidy the channel dispatch in _run_channel",
+    "diff": "items/item18.patch"
+  },
+  {
+    "item": "item19",
+    "description": "Build channel hit rows and the candidate column list in one place",
+    "diff": "items/item19.patch"
+  }
+]

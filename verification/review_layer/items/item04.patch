@@ -1,0 +1,39 @@
+diff --git a/eval/harness.py b/eval/harness.py
+index d8314e7..5c0ec67 100644
+--- a/eval/harness.py
++++ b/eval/harness.py
+@@ -269,6 +269,15 @@ def _stub_abstain(row: dict) -> dict:
+             "lint": {"prose_refs_unbacked": [], "leaked_cids": []}}
+ 
+ 
++def _stub_hallucinate(row: dict) -> dict:
++    """A BROKEN-GATE stub: it resolves one citation id that is NOT in its candidate set, the breach
++    the citation gate makes structurally impossible in the live pipeline. It exists so a CLI test
++    can prove that a hallucination alone turns --mode gate RED; the golden corpus stays green,
++    which isolates that branch of the RED condition."""
++    base = _stub_run(row)
++    return {**base, "resolved": {**base["resolved"], "Cx": "0000-ghost ст.999"}}
++
++
+ _FLIP_STATE = {"n": 0}
+ 
+ 
+@@ -423,7 +432,8 @@ def main() -> int:
+     ap = argparse.ArgumentParser(description="Eval harness + gate over the reference questions")
+     ap.add_argument("--etalons", default=str(ETALONS),
+                     help="reference-question (gold) file to score against")
+-    ap.add_argument("--backend", choices=["stub", "stub-abstain", "stub-flip", "live"],
++    ap.add_argument("--backend",
++                    choices=["stub", "stub-abstain", "stub-flip", "stub-hallucinate", "live"],
+                     default="stub")
+     ap.add_argument("--mode", choices=["score", "gate", "noise"], default="score")
+     ap.add_argument("--no-llm", action="store_true",
+@@ -485,6 +495,8 @@ def main() -> int:
+             run_fn = _stub_run
+         elif args.backend == "stub-abstain":
+             run_fn = _stub_abstain
++        elif args.backend == "stub-hallucinate":
++            run_fn = _stub_hallucinate                             # gate-breach pin: → RED
+         elif args.backend == "stub-flip":
+             run_fn = _stub_flip                                    # noise-exit pin: set flips → RED
+         else:

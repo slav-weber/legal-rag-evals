@@ -1,0 +1,70 @@
+--- a/eval/harness.py
++++ b/eval/harness.py
+@@ -377,6 +377,20 @@
+     return d
+ 
+ 
++def _new_run_id(backend: str) -> str:
++    """UTC timestamp to the second + backend: unique per run, so no run file is clobbered."""
++    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H%M%S") + f"_{backend}"
++
++
++def _write_jsonl(path: Path, header: dict, rows: list[dict]) -> Path:
++    """The header as the first JSON line, then one line per row (UTF-8, non-ASCII kept)."""
++    with open(path, "w", encoding="utf-8") as fh:
++        fh.write(json.dumps(header, ensure_ascii=False) + "\n")
++        for row in rows:
++            fh.write(json.dumps(row, ensure_ascii=False) + "\n")
++    return path
++
++
+ def write_run(res: dict, run_id: str, golden: dict | None = None) -> Path:
+     """Persist a run — overall / by-class metrics + the PINNED candidate set & taxonomy per
+     reference question — to $DATA_DIR/eval/t13/<run_id>.jsonl (data, not git; a UNIQUE run_id means
+@@ -387,25 +401,15 @@
+     if golden is not None:
+         header["golden"] = {"mechanical_red": golden.get("mechanical_red", []),
+                             "drift_signals": golden.get("drift_signals", [])}
+-    path = _run_dir() / f"{run_id}.jsonl"
+-    with open(path, "w", encoding="utf-8") as fh:
+-        fh.write(json.dumps(header, ensure_ascii=False) + "\n")
+-        for d in res["detail"]:
+-            fh.write(json.dumps(d, ensure_ascii=False) + "\n")
+-    return path
++    return _write_jsonl(_run_dir() / f"{run_id}.jsonl", header, res["detail"])
+ 
+ 
+ def write_noise(noise: dict, run_id: str) -> Path:
+     """Persist a noise measurement to $DATA_DIR/eval/t13/noise_<run_id>.jsonl: the measurement MUST
+     be a stored artifact — per-pass mechanical keys + request_ids + cited sets, not just a number
+     quoted in prose."""
+-    path = _run_dir() / f"noise_{run_id}.jsonl"
+-    with open(path, "w", encoding="utf-8") as fh:
+-        head = {k: v for k, v in noise.items() if k != "detail"}
+-        fh.write(json.dumps(head, ensure_ascii=False) + "\n")
+-        for d in noise["detail"]:
+-            fh.write(json.dumps(d, ensure_ascii=False) + "\n")
+-    return path
++    head = {k: v for k, v in noise.items() if k != "detail"}
++    return _write_jsonl(_run_dir() / f"noise_{run_id}.jsonl", head, noise["detail"])
+ 
+ 
+ def _acts_from_gold(path: Path) -> set[str]:
+@@ -507,7 +511,7 @@
+ 
+         if args.mode == "noise":                     # MEASURE the temperature-0 noise FIRST
+             noise = measure_noise(scorable, run_fn, args.passes)
+-            run_id = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H%M%S") + f"_{args.backend}"
++            run_id = _new_run_id(args.backend)
+             npath = write_noise(noise, run_id)                    # PERSIST the measurement
+             red = noise["gold_flips"] > 0 or noise["set_flip_rate"] > NOISE_FLIP_THRESHOLD
+             print(f"noise [{args.backend}, {noise['passes']} passes, n={noise['n']}]: "
+@@ -521,7 +525,7 @@
+         # The golden corpus gates ALL backends: an ORACLE stub satisfies a satisfiable mechanical
+         # golden, while stub-abstain and a regressed live pipeline fail it.
+         gr = run_golden(golden, run_fn)
+-        run_id = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H%M%S") + f"_{args.backend}"
++        run_id = _new_run_id(args.backend)
+         run_path = write_run(res, run_id, gr)   # pinned run + golden verdict in the header
+         a = res["overall"]
+         print(f"harness [{args.backend}]: {a['n']} reference questions, gold {a['gold']} · run "

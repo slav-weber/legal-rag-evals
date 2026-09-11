@@ -1,0 +1,12 @@
+diff --git a/pipelines/rada/parse_structure.py b/pipelines/rada/parse_structure.py
+--- a/pipelines/rada/parse_structure.py
++++ b/pipelines/rada/parse_structure.py
+@@ -80,7 +80,7 @@
+ ZATVERDZHENO_RE = re.compile(r"^ЗАТВЕРДЖЕН(?:О|А|І|ИЙ)\s*$", re.IGNORECASE)
+ DODATOK_RE = re.compile(r"^Додаток(?:\s+(\d+(?:-\d+)?))?\s*$", re.IGNORECASE)
+ POINT_RE = re.compile(r"^(\d+(?:-\d+)?)\.\s+(\S.*)$")
+-MARKER_RE = re.compile(r"\{[^{}]*\}", re.DOTALL)
++MARKER_RE = re.compile(r"\{.*\}", re.DOTALL)   # nested markers too
+ DOCTYPE_RE = re.compile(r"^(ЗАКОН|КОДЕКС|КОНСТИТУЦІЯ|УКАЗ|ПОСТАНОВА|ДЕКРЕТ)\b", re.IGNORECASE)
+ 
+ 

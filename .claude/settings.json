@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "deny": [
+      "Read(.env)"
+    ],
+    "ask": [
+      "Edit(/verification/test_inventory.json)",
+      "Edit(/verification/seeded_bugs/**)",
+      "Edit(/verification/reports/**)",
+      "Edit(/verification/gates.py)",
+      "Edit(/.github/workflows/**)",
+      "Bash(git push *)"
+    ]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --frozen --project \"${CLAUDE_PROJECT_DIR}\" python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/gates_before_stop.py\"",
+            "timeout": 120
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -25,6 +25,9 @@ models/
 tools/data-atlas/atlas.json
 tools/data-atlas/atlas.html
 
+# Claude Code: personal settings stay on the machine
+.claude/settings.local.json
+
 # OS/IDE
 .DS_Store
 Thumbs.db

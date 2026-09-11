@@ -53,6 +53,9 @@ golden corpus without calling anything.
 Every push runs the same gates in CI: the test suite and a ratchet that stops tests from being
 deleted or skipped, ruff, the two offline harness gates, a secret scan over the full git history
 and an audit of the locked dependencies (`.github/workflows/verify.yml`, `verification/gates.py`).
+Coding agents working here follow `AGENTS.md`: the system's invariants, what an agent must not do,
+and what "done" means. In Claude Code, `/review` adds an adversarial reviewer and a skeptic, and a
+Stop hook refuses "done" while a gate is red.
 
 How much do those gates actually catch? `verification/seeded_bugs/` plants realistic defects one
 at a time (a bypassed citation gate, an off-by-one, a flipped comparison, a swallowed degradation

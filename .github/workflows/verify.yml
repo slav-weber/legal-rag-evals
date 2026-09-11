@@ -84,3 +84,22 @@ jobs:
         run: uv export --frozen --format requirements-txt --no-emit-project -o "$RUNNER_TEMP/requirements.txt"
       - name: Audit against known vulnerabilities
         run: uvx pip-audit@2.10.1 --disable-pip -r "$RUNNER_TEMP/requirements.txt"
+
+  seeded-bugs:
+    name: seeded-bug benchmark
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4  # v10.1.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Install the locked environment
+        run: uv sync --frozen
+      - name: Plant every catalogued bug and run the gates
+        run: uv run --frozen python -m verification.seeded_bugs.run --no-write

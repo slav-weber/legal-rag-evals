@@ -1,0 +1,18 @@
+BLOCK
+
+```json
+[{"file": "pipelines/freshness/probe.py", "line": 101, "severity": "major",
+  "invariant": "3",
+  "defect": "The rewrite of seed_alias_map drops the canonical-spelling self-entries (the old loop wrote both amap[key]=c and amap[c]=c; the new comprehension keys the map on SEED_ACTS only), so the canonical nreg the feed actually uses is no longer a search key.",
+  "consequence": "seed_hits searches the feed text for each KEY of the map (probe.py:108). r.txt publishes the canonical nreg — '3633-20' for the mobilisation law, per the function's own docstring — which is now absent from the keys, so an r.txt that really does list 3633-20 yields present=[], the same sha256 of the empty string that an honest 'no seed acts' produces. changed stays False and the daily line prints '3633-20 ... none' as 🟢 ok: a new edition of the most-amended seed act passes silently and the corpus goes stale behind a green freshness report. This re-introduces exactly the blindness the function was written to remove ('matching only SEED_ACTS (3633-IX) was blind to it forever'). Note the chunk layer is NOT affected: chunk.py:179 reads the map with aliases.get(a, a), so the missing self-entry falls back to identity there.",
+  "evidence": "[LIVE]",
+  "proof": "Ran from the tree root: python -c with a fake psycopg conn returning rows=[('3633-IX','3633-20')]. Output: alias map = {'3543-12': '3543-12', ..., '3633-IX': '3633-20', '1404-19': '1404-19'} — no '3633-20' key; hits on canonical-spelling feed ('3633-20 mobilisation law changed today'): []; hits on alias-spelling feed ('3633-IX ...'): ['3633-20']. The pinned unit test agrees: python -m unittest tests.test_freshness_rada_matcher -> ERROR: test_builds_both_spellings (SeedAliasMapOffline), File tests/test_freshness_rada_matcher.py line 106, self.assertEqual(amap['3633-20'], '3633-20') -> KeyError: '3633-20'."},
+
+ {"file": "pipelines/rada/parse_structure.py", "line": 841,
+  "severity": "major",
+  "invariant": "3",
+  "defect": "The unclosed-amendment-quote failure gate was deleted and replaced by the comment 'warning only: one bad edition must not block the nightly chain': the branch's _summary.emit(ok=grand_eds - len(quote_eof_bad), failed=len(quote_eof_bad)) and return 1 are gone, so control falls through to _summary.emit(ok=grand_eds, failed=0, nbytes=0) and return 0 at lines 843-844.",
+  "consequence": "An edition whose amendment quote never closes has its structural tail suppressed — the code prints 'parse is NOT trustworthy for them' on the very line above — yet the run now exits 0 and emits failed=0. Per pipelines/summary.py the orchestrator journals those counts as the collector's own honest item counts, so it records a fully clean run and the nightly chain proceeds to chunk/embed units the parser just declared untrustworthy; the only signal of the suppressed tail is a stdout warning nobody gates on. This is the 'exit 0 while errors happened' anti-pattern that pipelines/exitcodes.py exists to forbid. It is also outside the stated scope of this change, which covers only the shared r.txt guard and the source_checks reader/writer in pipelines/freshness/ — nothing in the description touches the parser's exit contract.",
+  "evidence": "[LIVE]",
+  "proof": "python -m unittest discover -s tests -q (verbatim the 'unit-tests' gate, verification/gates.py:38) -> FAIL: test_an_unclosed_amendment_quote_fails_the_run (test_parse_structure_main.ParseRunExitCode), File tests/test_parse_structure_main.py line 102, self.assertEqual(code, exitcodes.FAIL) -> AssertionError: 0 != 1. Whole suite: Ran 336 tests, FAILED (failures=1, errors=1, skipped=1). Both failing tests are pinned in verification/test_inventory.json (lines 89 and 187), so the CI unit-tests gate is red."}]
+```

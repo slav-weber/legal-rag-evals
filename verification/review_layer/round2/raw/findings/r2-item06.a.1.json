@@ -1,0 +1,10 @@
+{
+  "file": "api/main.py",
+  "line": 164,
+  "severity": "critical",
+  "invariant": null,
+  "defect": "main() binds the API to 0.0.0.0 instead of 127.0.0.1, an edit unrelated to the described retrieval/generate refactor, while the comment on the same line still reads `# localhost ONLY (dev)`.",
+  "consequence": "The seam that by design has no auth, no rate limit and no user-data protection becomes reachable from the whole LAN instead of the loopback: anyone on the network can drive generation, burn the DeepSeek budget and cause questions to be persisted into traces/t14.",
+  "evidence": "[LIVE]",
+  "proof": "Ran `python -m verification.gates` in the tree: `FAIL (exit 1)  lint` with `api\\main.py:164:27: S104 Possible binding to all interfaces` (final line: `RED: 3/5 gate(s) passed; failed: unit-tests, lint`). The bind is pinned as a red line in three places the diff leaves untouched: api/main.py:5 'the server binds 127.0.0.1 ONLY', README.md:24 'bound to 127.0.0.1', docs/ARCHITECTURE.md:91 'bound to 127.0.0.1 only'. No test covers the host (grep host|uvicorn|main\\( in tests/test_api.py returns only an unrelated localhost URL at line 155), so lint is the only thing standing between this and a merge."
+}

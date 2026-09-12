@@ -1,0 +1,10 @@
+{
+  "file": "pipelines/rag/generate.py",
+  "line": 117,
+  "severity": "major",
+  "invariant": null,
+  "defect": "dedup_candidates now groups by the article stem alone — the `act` was dropped from the grouping key — so the same article number retrieved from two different acts lands in one group and the container-subsume branch keeps only the highest-ranked member, discarding the other act's candidate.",
+  "consequence": "A correctly retrieved, in-force norm from a second act never reaches the closed C1..Ck set, so the model cannot cite it and the довідка is grounded on one act only; on a query that explicitly cites both (e.g. «ст.5 КАС і ст.5 КУпАП») one of the two named articles just disappears. The drop is silent — `dropped` reports only empty_text and budget — which build_candidates' own docstring calls 'our antipattern', and the module docstring (generate.py:11-12) names the cross-act «ст.5» collision as the very hazard this layer exists to handle.",
+  "evidence": "[LIVE]",
+  "proof": "Ran dedup_candidates against an inlined copy of the pre-change grouping (ASCII stand-ins for the unit paths to keep console encoding out of it):\n  containers, two acts  OLD: [('8073-10', 'st.5'), ('2747-15', 'st.5')]\n  containers, two acts  NEW: [('8073-10', 'st.5')]\n  container A + leaves B OLD: [('8073-10', 'st.5'), ('2747-15', 'st.5/p.1'), ('2747-15', 'st.5/p.2')]\n  container A + leaves B NEW: [('8073-10', 'st.5')]\nIn the second case one act's container swallows another act's two leaves. The function's own docstring at generate.py:110 still says 'Per (act, article-stem) group', so code and contract now contradict each other. No test catches it: tests/test_generate.py:260-278 builds every fixture with act 'A', and verification/README.md:298 already catalogues this exact defect as missed weakness W05 — 'the fixtures vary the unit path and never the act, so a key that ignores the act changes nothing they can see'."
+}

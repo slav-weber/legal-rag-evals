@@ -1,0 +1,10 @@
+{
+  "file": "eval/harness.py",
+  "line": 529,
+  "severity": "critical",
+  "invariant": "5",
+  "defect": "The noise gate's RED condition lost its gold-flip leg: 'red = noise[\"gold_flips\"] > 0 or noise[\"set_flip_rate\"] > NOISE_FLIP_THRESHOLD' became 'red = noise[\"set_flip_rate\"] > NOISE_FLIP_THRESHOLD'. The justifying comment, 'a gold flip is a set flip too', is a non-sequitur: a gold flip does imply a set flip on that row, but the surviving condition compares a RATE against 0.45, not a count against 0, so gold flips below that rate no longer redden anything.",
+  "consequence": "A replay in which the gold citation itself appears in one pass and vanishes in the next — the hard incident the two-level comparator was built for — now prints 'REPLAY [GREEN]' and exits 0 for any run where fewer than 45% of questions flip. An operator reading the gate, or CI consuming the exit code, is told a run is stable when the gold answer is not; a failure is reported as success.",
+  "evidence": "[LIVE]",
+  "proof": "Ran H.measure_noise over 4 reference rows with a run_fn that drops the gold citation on pass 2 of row 1 only: gold_flips = 1, set_flip_rate = 0.25, NOISE_FLIP_THRESHOLD = 0.45. AFTER (the expression in the tree) red = False → exit 0; BEFORE (the expression in the diff) red = True → exit 1. The code contradicts its own documentation in three places that the change left standing: harness.py lines 52-53, 'GOLD-level flips are a HARD incident (any > 0), independent of this rate'; harness.py line 535, the return's own comment, still 'RED: a gold flip (hard) OR a rate over the threshold'; eval/README.md lines 177-179, 'A gold flip ... is a hard incident at any count above 0'. Nothing catches the removal: tests/test_harness.py NoiseGate::test_set_flip_reddens_noise_gate exercises only the rate branch (its docstring says GOLD-flips 0 isolates it from the gold branch), and Noise::test_gold_flip_is_an_incident asserts measure_noise's counter, never the exit code — the suite is green on this line."
+}

@@ -1,0 +1,170 @@
+diff --git a/ml/llm_client.py b/ml/llm_client.py
+index 4926ae8..24dee4d 100644
+--- a/ml/llm_client.py
++++ b/ml/llm_client.py
+@@ -15,7 +15,7 @@ import json
+ import os
+ from dataclasses import dataclass
+ from functools import lru_cache
+-from typing import Iterable
++from typing import Any, Iterable
+ 
+ from dotenv import load_dotenv
+ from openai import OpenAI
+@@ -82,14 +82,23 @@ def _client(base_url: str) -> OpenAI:
+     return OpenAI(base_url=base_url, api_key=_API_KEY)
+ 
+ 
+-def _result_from(resp, fallback_model: str) -> ChatResult:
++def _usage_counts(resp) -> tuple[int, int, int]:
++    """(prompt, completion, total) tokens as the server reported them. Defensive: a server that
++    omits `usage`, or any field of it, accounts as 0 rather than crashing the call."""
+     usage = resp.usage
++    return (getattr(usage, "prompt_tokens", 0) or 0,
++            getattr(usage, "completion_tokens", 0) or 0,
++            getattr(usage, "total_tokens", 0) or 0)
++
++
++def _result_from(resp, fallback_model: str) -> ChatResult:
++    prompt_tokens, completion_tokens, total_tokens = _usage_counts(resp)
+     return ChatResult(
+         text=resp.choices[0].message.content or "",
+         model=resp.model or fallback_model,
+-        prompt_tokens=getattr(usage, "prompt_tokens", 0) or 0,
+-        completion_tokens=getattr(usage, "completion_tokens", 0) or 0,
+-        total_tokens=getattr(usage, "total_tokens", 0) or 0,
++        prompt_tokens=prompt_tokens,
++        completion_tokens=completion_tokens,
++        total_tokens=total_tokens,
+     )
+ 
+ 
+@@ -151,7 +160,7 @@ def deepseek_available() -> bool:
+ _SAFE_SCALARS = (int, float, type(None))
+ 
+ 
+-def _walk_strings(obj) -> list[str]:
++def _walk_strings(obj: Any) -> list[str]:
+     """Every string ANYWHERE in a nested structure — dict KEYS included. TRULY FAIL-CLOSED
+     (a review finding): raises on any leaf we cannot reduce to text (bytes/set/tuple-of-bytes/
+     custom object), because an unscannable value could smuggle a marked fragment past the
+@@ -228,6 +237,23 @@ def _deepseek_client(timeout: float = DEEPSEEK_TIMEOUT):
+                   timeout=timeout, max_retries=1)
+ 
+ 
++def _thinking(enabled: bool) -> dict:
++    """The reasoning switch, ALWAYS stated explicitly: thinking is ON server-side by default on v4
++    models and silently spends the max_tokens budget on reasoning, so no call here leaves it
++    implicit."""
++    return {"thinking": {"type": "enabled" if enabled else "disabled"}}
++
++
++def _strictify_object(schema: dict) -> None:
++    """One object level of the strict-mode schema: additionalProperties:false plus a `required`
++    superset of the properties it declares, then recurse into each property."""
++    props = schema.get("properties", {}) or {}
++    schema["additionalProperties"] = False
++    schema["required"] = list(props.keys())
++    for v in props.values():
++        _strictify_schema(v)
++
++
+ def _strictify_schema(schema):
+     """Recursively enforce strict-mode JSON schema: EVERY object level gets
+     additionalProperties:false and a required-superset of its properties — not just
+@@ -235,11 +261,7 @@ def _strictify_schema(schema):
+     Mutates and returns a copy-safe structure (call on a deepcopy)."""
+     if isinstance(schema, dict):
+         if schema.get("type") == "object" or "properties" in schema:
+-            props = schema.get("properties", {}) or {}
+-            schema["additionalProperties"] = False
+-            schema["required"] = list(props.keys())
+-            for v in props.values():
+-                _strictify_schema(v)
++            _strictify_object(schema)
+         if isinstance(schema.get("items"), (dict, list)):
+             _strictify_schema(schema["items"])
+         for comb in ("anyOf", "oneOf", "allOf"):
+@@ -279,7 +301,7 @@ def chat_deepseek(
+         messages=messages,
+         temperature=temperature,
+         max_tokens=max_tokens,
+-        extra_body={"thinking": {"type": "enabled" if thinking else "disabled"}},
++        extra_body=_thinking(thinking),
+     )
+     return _result_from(resp, model)
+ 
+@@ -302,6 +324,30 @@ class ToolResult:
+     raw_arguments: str = ""
+ 
+ 
++def _first_tool_call(choice):
++    """The forced tool call. Its absence is reported with the finish_reason that replaced it —
++    'length' means the budget, not the model, refused to answer."""
++    calls = choice.message.tool_calls or []
++    if not calls:
++        raise RuntimeError(
++            f"DeepSeek returned no tool call (finish_reason={choice.finish_reason}); "
++            "if 'length', raise max_tokens."
++        )
++    return calls[0]
++
++
++def _tool_args(call, choice) -> dict:
++    """The call's arguments, parsed. finish_reason=length truncates the tool-args JSON mid-string
++    (observed live), so a decode error is reported as the budget problem it actually is."""
++    try:
++        return json.loads(call.function.arguments or "{}")
++    except json.JSONDecodeError as exc:
++        raise RuntimeError(
++            f"DeepSeek tool-args JSON truncated (finish_reason={choice.finish_reason}) "
++            f"— raise max_tokens: {exc}"
++        ) from exc
++
++
+ def call_tool_deepseek(
+     messages: list[dict],
+     tool: dict,
+@@ -340,32 +386,19 @@ def call_tool_deepseek(
+         max_tokens=max_tokens,
+         tools=tools,
+         tool_choice={"type": "function", "function": {"name": tool["name"]}},
+-        extra_body={"thinking": {"type": "disabled"}},
++        extra_body=_thinking(False),
+     )
+     choice = resp.choices[0]
+-    calls = choice.message.tool_calls or []
+-    if not calls:
+-        raise RuntimeError(
+-            f"DeepSeek returned no tool call (finish_reason={choice.finish_reason}); "
+-            "if 'length', raise max_tokens."
+-        )
+-    try:
+-        args = json.loads(calls[0].function.arguments or "{}")
+-    except json.JSONDecodeError as exc:
+-        # finish_reason=length truncates the tool-args JSON mid-string (observed live).
+-        raise RuntimeError(
+-            f"DeepSeek tool-args JSON truncated (finish_reason={choice.finish_reason}) "
+-            f"— raise max_tokens: {exc}"
+-        ) from exc
+-    usage = resp.usage
++    call = _first_tool_call(choice)
++    prompt_tokens, completion_tokens, total_tokens = _usage_counts(resp)
+     return ToolResult(
+-        args=args,
++        args=_tool_args(call, choice),
+         model=resp.model or model,
+-        prompt_tokens=getattr(usage, "prompt_tokens", 0) or 0,
+-        completion_tokens=getattr(usage, "completion_tokens", 0) or 0,
+-        total_tokens=getattr(usage, "total_tokens", 0) or 0,
+-        cache_hit_tokens=getattr(usage, "prompt_cache_hit_tokens", 0) or 0,
++        prompt_tokens=prompt_tokens,
++        completion_tokens=completion_tokens,
++        total_tokens=total_tokens,
++        cache_hit_tokens=getattr(resp.usage, "prompt_cache_hit_tokens", 0) or 0,
+         request_id=getattr(resp, "id", "") or "",
+-        tool_call_id=getattr(calls[0], "id", "") or "",
+-        raw_arguments=calls[0].function.arguments or "{}",
++        tool_call_id=getattr(call, "id", "") or "",
++        raw_arguments=call.function.arguments or "{}",
+     )

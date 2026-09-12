@@ -1,0 +1,19 @@
+BLOCK
+
+```json
+[{"file": "pipelines/rada/parse_structure.py", "line": 841, "severity": "critical",
+  "invariant": "5",
+  "defect": "The unclosed-amendment-quote branch lost its `_summary.emit(ok=grand_eds-len(quote_eof_bad), failed=len(quote_eof_bad))` and `return 1`, so a run that detected suppressed structural tails now falls through to `_summary.emit(ok=grand_eds, failed=0)` and `return 0`.",
+  "consequence": "A parse whose own message says \"parse is NOT trustworthy for them\" exits 0 and journals failed=0, so the nightly orchestrator records a clean run and the truncated editions are chunked and served as if whole; the operator gets no failure anywhere. The change is also absent from the author's description, which covers only the freshness refactor.",
+  "evidence": "[LIVE]",
+  "proof": "Drove main() over one CLOSED and one UNCLOSED edition via the repo's own harness: `python -c \"import test_parse_structure_main as T; tc=T.ParseRunExitCode('test_an_unclosed_amendment_quote_fails_the_run'); print(tc._run({'20260101':T.CLOSED,'20250101':T.UNCLOSED}))\"` -> `UNCLOSED-quote run -> exit code: 0 (0=OK, 1=FAIL)` and `COLLECT-SUMMARY parsed: {'ok': 2, 'failed': 0, 'bytes': 0, 'marked': 0}`. `python -m unittest discover -s tests -q` -> `FAIL: test_parse_structure_main.ParseRunExitCode.test_an_unclosed_amendment_quote_fails_the_run ... AssertionError: 0 != 1`. `python -m verification.gates` -> `RED: 4/5 gate(s) passed; failed: unit-tests`. The retained comment two lines above still reads \"RED, not a warning ... the only honest signal is a failed run\"."},
+
+ {"file": "pipelines/freshness/probe.py", "line": 101, "severity": "major",
+  "invariant": null,
+  "defect": "`seed_alias_map` was rewritten as `{key: canon.get(key, key) for key in SEED_ACTS}`, dropping the `amap[c] = c` canonical->canonical entries, so the canonical spelling is no longer a key and `seed_hits` never searches the feed for it.",
+  "consequence": "The Rada r.txt freshness probe goes blind to the mobilisation law again (feed prints `3633-20`, seed key is `3633-IX`) - exactly the bug the docstring above it says was blind \"forever\"; an edit to that act reads as an honest \"seed acts in feed: none\" and never raises a change. The signal hash also shifts for every run, producing a one-off false change and a silently rebaselined baseline.",
+  "evidence": "[LIVE]",
+  "proof": "Against the committed fixture `tests/fixtures/rada_r_sample.txt` (contains `3633-20`, not `3633-IX`), building the map from rows `[('3633-IX','3633-20'), ...]`: `map AFTER change keys: [... '3633-IX' ...]` vs `map BEFORE change keys: [... '3633-20', '3633-IX' ...]`; `seed_hits AFTER : ['560-2024-п']` vs `seed_hits BEFORE: ['3633-20', '560-2024-п']`; `signal AFTER : 94029cfd8511a31c` vs `signal BEFORE: 888bea720ea1be0f`. `python -m unittest discover -s tests -q` -> `ERROR: test_freshness_rada_matcher.SeedAliasMapOffline.test_builds_both_spellings ... KeyError: '3633-20'` at the assertion `amap[\"3633-20\"] == \"3633-20\"`."}]
+```
+
+Checked and found clean (no finding): `is_plain_rtxt` is an exact De Morgan negation of both call sites' old guards (`guard equivalence: True` over empty / short / `<html` / nreg-bearing bodies); `changed_since`, `record_check`, `_status`, `_check_source`, `_signal`, `_note`, `_collect` and `_record_snapshot` preserve the prior logic and evaluation order (prev is still read before the INSERT); the new `pipelines.freshness.probe` import in `rada_backstop` does not cycle (probe imports the backstop inside `main()` only) - `import pipelines.freshness.rada_backstop` succeeds; the module-level `json` import in probe.py is unused elsewhere and lint is green. `pipelines/rada/chunk.py:179` consumes the alias map as `aliases.get(a, a)`, so it is unaffected by the dropped self-entries.

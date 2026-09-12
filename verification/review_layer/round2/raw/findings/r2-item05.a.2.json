@@ -1,0 +1,10 @@
+{
+  "file": "pipelines/checks/_common.py",
+  "line": 58,
+  "severity": "critical",
+  "invariant": "4",
+  "defect": "The `follow_redirects` default was flipped from False to True, which makes the `if not follow_redirects and r.is_redirect` guard on line 77 unreachable for every caller that does not pass the flag, so RadaRoutingError can no longer fire on the default path.",
+  "consequence": "A 3xx from a data.rada opendata endpoint — a lost UA on the wire, or Rada's temporary anti-DDoS bounce to the human site zakon.rada.gov.ua — is now silently followed to HTML and returned as a 200. `pipelines/rada/fetch_texts.py:78` (`r = get(url)`) then takes that HTML as the edition text and returns it as the act's corpus text; `pipelines/ksu/snapshot.py:106` (`r = get(url, ua=\"OpenData\")`) sha256s it and writes it to disk plus the snapshots table as a genuine ksu-txt. This is the silent poisoning the module was written to prevent — the docstring names the 2026-07-09 'migration' false alarm that came from exactly a browser UA plus a followed 302.",
+  "evidence": "[LIVE]",
+  "proof": "`python -m unittest discover -s tests` → FAIL: test_rada_reachability.GetNoFollow.test_raises_rada_routing_error_on_redirect — 'RadaRoutingError not raised'; the test mocks httpx.get to return a 302 to zakon.rada.gov.ua and calls cm.get(url) with no flag. The function's own docstring on line 63 still reads '``follow_redirects`` defaults to False', and pipelines/rada/fetch_attachments.py:72 still carries the comment 'explicit opt-in (default now False)' — both now contradict the signature."
+}

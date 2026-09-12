@@ -1,0 +1,19 @@
+{
+  "seed": 20260912,
+  "rev": "129470d",
+  "catalogue": "verification/seeded_bugs/catalogue_v4.py",
+  "items": [
+    {"src": "K01", "kind": "bug", "patch": "clean/K01.patch", "bugs": ["W02", "W05", "W08"],
+     "description": "Give the retriever one candidate-row builder and one citable-identity key instead of a copy per channel, and lift the cross-encoder rerank and the exact-first merge out of search() and the gate's verdict, retry turn and attempt record out of generate()."},
+    {"src": "K02", "kind": "bug", "patch": "clean/K02.patch", "bugs": ["W09", "W11"],
+     "description": "Read every gold and golden JSONL file through one reader in retrieval_eval, and give the harness named helpers for the per-question tally, the persisted run and noise files, the stub result envelope and backend selection."},
+    {"src": "K03", "kind": "bug", "patch": "clean/K03.patch", "bugs": ["W19", "W13"],
+     "description": "Share one plain-r.txt guard and one source_checks reader/writer across the freshness probe, the seed-act backstop and the r.txt sampler, and name the daily run's per-source check and status classification."},
+    {"src": "K04", "kind": "bug", "patch": "clean/K04.patch", "bugs": ["W18", "W20", "W14"],
+     "description": "Split both model pins into named assertions (bootstrap, model name, score drift, ordering) and give the embedding and lemma index builders a shared one-cell query helper and a batch-write step."},
+    {"src": "K05", "kind": "clean", "patch": "clean/K05.patch", "bugs": [],
+     "description": "Pull the LLM client's repeated usage-token read, thinking switch, strict-schema object pass and tool-call parsing into named helpers."},
+    {"src": "K06", "kind": "clean", "patch": "clean/K06.patch", "bugs": [],
+     "description": "Collect fetch_texts' six loose run counters into a small _Tally dataclass, and give the КСУ snapshotter a named _record_snapshot step for its provenance row."}
+  ]
+}

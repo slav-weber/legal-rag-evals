@@ -1,0 +1,10 @@
+{
+  "file": "pipelines/units_ledger.py",
+  "line": 56,
+  "severity": "major",
+  "invariant": null,
+  "defect": "The drift predicate was changed from `live_entries.get(k) != v` (any difference) to `live_entries.get(k, 0) < v` (fewer only), so a count that GREW inside a known edition is no longer reported.",
+  "consequence": "An injection into an existing edition — the module docstring's own example, a reparse that turns quoted amendment headings into phantom host articles — passes the ledger clean. That is half the reason the ledger exists: the data-gate counters are `>=` floors, so added units are invisible to them, and this exact manifest was the only check that caught them. Deletions are still caught, so the hole is silent and one-directional.",
+  "evidence": "[LIVE]",
+  "proof": "`python -m unittest tests.test_units_ledger` → FAIL: test_growth_inside_a_known_edition_detected — with ledger {'3543-12|2026-07-31': 112} and live {'3543-12|2026-07-31': 113}, d['changed_or_deleted'] is {} where the test expects {'3543-12|2026-07-31': {'ledger': 112, 'db': 113}}. The test's own comment states 'a single extra unit is a count drift exactly like a missing one'."
+}

@@ -1,0 +1,165 @@
+diff --git a/pipelines/ksu/snapshot.py b/pipelines/ksu/snapshot.py
+index 60d8439..d7b1f5f 100644
+--- a/pipelines/ksu/snapshot.py
++++ b/pipelines/ksu/snapshot.py
+@@ -79,6 +79,18 @@ def already_done(conn, nreg: str) -> bool:
+         return cur.fetchone() is not None
+ 
+ 
++def _record_snapshot(conn, url: str, sha: str, data: bytes, path: Path) -> None:
++    """The provenance row (artifact C-03, kind ksu-txt) that makes the file on disk verifiable."""
++    with conn.cursor() as cur:
++        cur.execute(
++            """INSERT INTO snapshots
++               (artifact_id, url, sha256, bytes, kind, http_status, raw_path, fetched_at)
++               VALUES ('C-03', %s, %s, %s, 'ksu-txt', 200, %s, %s)""",
++            (url, sha, len(data), rel(path),
++             datetime.now(timezone.utc)))
++    conn.commit()
++
++
+ def main() -> int:
+     from pipelines.orchestration import warn_if_standalone
+     warn_if_standalone("C-03 (ksu.snapshot)")  # loud unless orchestrated
+@@ -128,14 +140,7 @@ def main() -> int:
+             # LF->CRLF, so the file on disk would differ from the hashed `data` (LF) and
+             # snapshots.sha256 would be a dead column.
+             path.write_bytes(data)
+-            with conn.cursor() as cur:
+-                cur.execute(
+-                    """INSERT INTO snapshots
+-                       (artifact_id, url, sha256, bytes, kind, http_status, raw_path, fetched_at)
+-                       VALUES ('C-03', %s, %s, %s, 'ksu-txt', 200, %s, %s)""",
+-                    (url, sha, len(data), rel(path),
+-                     datetime.now(timezone.utc)))
+-            conn.commit()
++            _record_snapshot(conn, url, sha, data, path)
+             saved += 1
+             print(f"  + {nreg} -> {path.name}  ({len(data):,} B, sha {sha[:12]}…)")
+ 
+diff --git a/pipelines/rada/fetch_texts.py b/pipelines/rada/fetch_texts.py
+index d26a31d..b64bd5d 100644
+--- a/pipelines/rada/fetch_texts.py
++++ b/pipelines/rada/fetch_texts.py
+@@ -22,6 +22,7 @@ from __future__ import annotations
+ import os
+ import sys
+ import time
++from dataclasses import dataclass, field
+ from pathlib import Path
+ from urllib.parse import quote
+ 
+@@ -69,6 +70,22 @@ class TransientError(RuntimeError):
+     """A 429/5xx that persisted through all retries — the run should fail."""
+ 
+ 
++@dataclass
++class _Tally:
++    """What the run accomplished, counted honestly: the DONE line, the COLLECT-SUMMARY and the
++    exit code are all derived from these, so a swallowed failure cannot exit green. `stopped` is
++    run-wide: once the day's budget stops the run it stays stopped, so the remaining editions
++    defer in priority order instead of trickling through."""
++
++    saved: int = 0
++    skipped: int = 0
++    no_text: int = 0
++    deferred: int = 0
++    bytes_dl: int = 0
++    stopped: bool = False
++    errors: list[str] = field(default_factory=list)
++
++
+ def fetch_txt(nreg: str, ymd: str) -> tuple[str | None, int]:
+     """Return (text|None, downloaded_bytes). None text = no text served (404/empty).
+     Retries 429/5xx with backoff; raises TransientError if it never succeeds."""
+@@ -106,18 +123,10 @@ def main() -> int:
+     header("fetch_texts — edition TXT (A-03; budgeted)" + (" [targeted]" if args.acts else ""))
+     print(f"Rada budget today: used={budget.used() / 1e6:.1f} MB, "
+           f"remaining={budget.remaining() / 1e6:.1f} MB (cap {budget.CAP_BYTES / 1e6:.0f} MB)")
+-    saved = skipped = no_text = deferred = 0
+-    bytes_dl = 0
+-    errors: list[str] = []
+-    budget_stopped = False
++    t = _Tally()
+ 
+     with connect() as conn:
+         for nreg in acts:
+-            # Edition selection:
+-            #   --since D : in-force editions on/after D, NEWEST first (cover the recent/
+-            #               wartime tail before the byte budget defers older history)
+-            #   --current : the single latest in-force edition
+-            #   default   : full history, oldest first
+             # --current/--since fetch the in-force edition, not a future/placeholder one
+             # (year 3000/2027…). Full-history mode still fetches every edition Rada offers,
+             # including scheduled ones.
+@@ -138,30 +147,30 @@ def main() -> int:
+                 ymd = ed.strftime("%Y%m%d")
+                 path = out_dir / f"ed{ymd}.txt"
+                 if path.exists() and path.stat().st_size > 0:
+-                    skipped += 1
++                    t.skipped += 1
+                     act_skipped += 1
+                     _set_path(conn, nreg, ed, rel(path))
+                     continue
+                 est = int(size) if size else 500_000
+-                if budget_stopped or budget.remaining() < DEFER_RESERVE or not budget.can_spend(est):
+-                    budget_stopped = True
+-                    deferred += 1
++                if t.stopped or budget.remaining() < DEFER_RESERVE or not budget.can_spend(est):
++                    t.stopped = True
++                    t.deferred += 1
+                     act_deferred += 1
+                     continue
+                 try:
+                     text, nbytes = fetch_txt(nreg, ymd)
+                 except TransientError as exc:
+-                    errors.append(str(exc))
++                    t.errors.append(str(exc))
+                     print(f"  ! {exc}")
+                     continue
+                 budget.add(nbytes)
+-                bytes_dl += nbytes
++                t.bytes_dl += nbytes
+                 if text is None:
+-                    no_text += 1
++                    t.no_text += 1
+                     print(f"  {nreg} ed{ymd}: no text served (404/empty)")
+                     continue
+                 if "�" in text:
+-                    errors.append(f"{nreg} ed{ymd}: U+FFFD in decoded text — not written")
++                    t.errors.append(f"{nreg} ed{ymd}: U+FFFD in decoded text — not written")
+                     print(f"  ! {nreg} ed{ymd}: U+FFFD (mojibake) — skipped")
+                     continue
+                 # atomic write: a kill / disk-full mid-write must never leave a
+@@ -175,22 +184,22 @@ def main() -> int:
+                 tmp.write_text(text, encoding="utf-8")
+                 os.replace(tmp, path)
+                 _set_path(conn, nreg, ed, rel(path))
+-                saved += 1
++                t.saved += 1
+                 act_saved += 1
+ 
+             print(f"  {nreg:14s} saved={act_saved:4d} skipped={act_skipped:4d} deferred={act_deferred:4d} "
+                   f"(of {len(rows)})")
+ 
+-    print(f"\nDONE: saved={saved}, skipped(existing)={skipped}, no-text(404)={no_text}, "
+-          f"deferred(budget)={deferred}, errors={len(errors)}")
+-    print(f"downloaded this run: {bytes_dl / 1e6:.1f} MB; Rada budget remaining: "
++    print(f"\nDONE: saved={t.saved}, skipped(existing)={t.skipped}, no-text(404)={t.no_text}, "
++          f"deferred(budget)={t.deferred}, errors={len(t.errors)}")
++    print(f"downloaded this run: {t.bytes_dl / 1e6:.1f} MB; Rada budget remaining: "
+           f"{budget.remaining() / 1e6:.1f} MB")
+-    if deferred:
+-        print(f"NOTE: {deferred} editions deferred to a later day (Rada daily budget). Re-run to resume.")
+-    for e in errors:
++    if t.deferred:
++        print(f"NOTE: {t.deferred} editions deferred to a later day (Rada daily budget). Re-run to resume.")
++    for e in t.errors:
+         print(f"  ! {e}")
+-    _summary.emit(ok=saved, failed=len(errors), nbytes=int(bytes_dl))  # honest counts
+-    return 1 if errors else 0
++    _summary.emit(ok=t.saved, failed=len(t.errors), nbytes=int(t.bytes_dl))  # honest counts
++    return 1 if t.errors else 0
+ 
+ 
+ def _set_path(conn, nreg: str, ed, rel_path: str) -> None:

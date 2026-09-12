@@ -1,0 +1,10 @@
+{
+  "file": "pipelines/freshness/probe.py",
+  "line": 101,
+  "severity": "major",
+  "invariant": null,
+  "defect": "`seed_alias_map` was rewritten as `{key: canon.get(key, key) for key in SEED_ACTS}`, dropping the `amap[c] = c` canonical->canonical entries, so the canonical spelling is no longer a key and `seed_hits` never searches the feed for it.",
+  "consequence": "The Rada r.txt freshness probe goes blind to the mobilisation law again (feed prints `3633-20`, seed key is `3633-IX`) - exactly the bug the docstring above it says was blind \"forever\"; an edit to that act reads as an honest \"seed acts in feed: none\" and never raises a change. The signal hash also shifts for every run, producing a one-off false change and a silently rebaselined baseline.",
+  "evidence": "[LIVE]",
+  "proof": "Against the committed fixture `tests/fixtures/rada_r_sample.txt` (contains `3633-20`, not `3633-IX`), building the map from rows `[('3633-IX','3633-20'), ...]`: `map AFTER change keys: [... '3633-IX' ...]` vs `map BEFORE change keys: [... '3633-20', '3633-IX' ...]`; `seed_hits AFTER : ['560-2024-п']` vs `seed_hits BEFORE: ['3633-20', '560-2024-п']`; `signal AFTER : 94029cfd8511a31c` vs `signal BEFORE: 888bea720ea1be0f`. `python -m unittest discover -s tests -q` -> `ERROR: test_freshness_rada_matcher.SeedAliasMapOffline.test_builds_both_spellings ... KeyError: '3633-20'` at the assertion `amap[\"3633-20\"] == \"3633-20\"`."
+}

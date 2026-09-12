@@ -1,0 +1,10 @@
+{
+  "file": "pipelines/rada/parse_structure.py",
+  "line": 841,
+  "severity": "critical",
+  "invariant": "5",
+  "defect": "The unclosed-amendment-quote branch lost its `_summary.emit(ok=grand_eds-len(quote_eof_bad), failed=len(quote_eof_bad))` and `return 1`, so a run that detected suppressed structural tails now falls through to `_summary.emit(ok=grand_eds, failed=0)` and `return 0`.",
+  "consequence": "A parse whose own message says \"parse is NOT trustworthy for them\" exits 0 and journals failed=0, so the nightly orchestrator records a clean run and the truncated editions are chunked and served as if whole; the operator gets no failure anywhere. The change is also absent from the author's description, which covers only the freshness refactor.",
+  "evidence": "[LIVE]",
+  "proof": "Drove main() over one CLOSED and one UNCLOSED edition via the repo's own harness: `python -c \"import test_parse_structure_main as T; tc=T.ParseRunExitCode('test_an_unclosed_amendment_quote_fails_the_run'); print(tc._run({'20260101':T.CLOSED,'20250101':T.UNCLOSED}))\"` -> `UNCLOSED-quote run -> exit code: 0 (0=OK, 1=FAIL)` and `COLLECT-SUMMARY parsed: {'ok': 2, 'failed': 0, 'bytes': 0, 'marked': 0}`. `python -m unittest discover -s tests -q` -> `FAIL: test_parse_structure_main.ParseRunExitCode.test_an_unclosed_amendment_quote_fails_the_run ... AssertionError: 0 != 1`. `python -m verification.gates` -> `RED: 4/5 gate(s) passed; failed: unit-tests`. The retained comment two lines above still reads \"RED, not a warning ... the only honest signal is a failed run\"."
+}

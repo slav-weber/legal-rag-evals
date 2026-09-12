@@ -1,0 +1,320 @@
+diff --git a/pipelines/freshness/probe.py b/pipelines/freshness/probe.py
+index 5ce9981..a598a16 100644
+--- a/pipelines/freshness/probe.py
++++ b/pipelines/freshness/probe.py
+@@ -15,6 +15,7 @@ the git trail matches source_checks — intermediate 🟡/⚠ stay on record.
+ from __future__ import annotations
+ 
+ import hashlib
++import json
+ import re
+ import sys
+ from datetime import date
+@@ -74,6 +75,15 @@ def _decode_rada(resp: httpx.Response) -> str:
+     return resp.content.decode("utf-8", "replace")
+ 
+ 
++def is_plain_rtxt(text: str) -> bool:
++    """True when the body really IS Rada's plain r.txt feed: long enough, not HTML, and carrying at
++    least one nreg-like token. A 200 that fails this is a stub / JS captcha, and reading it as an
++    honest "no seed acts" would poison the baseline — so the callers (this probe and the r.txt
++    sampler) refuse it instead. One guard, so the two cannot disagree about what a real feed is."""
++    return (len(text.strip()) >= 50 and "<html" not in text[:2000].lower()
++            and bool(re.search(r"\d+-\d", text)))
++
++
+ def seed_alias_map(conn) -> dict[str, str]:
+     """alias nreg -> canonical nreg for the seed acts.
+ 
+@@ -121,10 +131,7 @@ def probe(src: dict, seeds: dict[str, str] | None = None) -> tuple[str | None, s
+             if r.status_code != 200:
+                 return None, f"HTTP {r.status_code}"
+             text = _decode_rada(r)
+-            # A 200 with a plausible size but no nreg-like line (a stub / JS
+-            # captcha that isn't HTML) must not read as an honest "none". Require ≥1 nreg token.
+-            if (len(text.strip()) < 50 or "<html" in text[:2000].lower()
+-                    or not re.search(r"\d+-\d", text)):
++            if not is_plain_rtxt(text):
+                 return None, f"HTTP 200 but body not a plain r.txt ({len(text)} B, no nreg line)"
+             # Act-wide, not source-wide: r.txt (Rada's recent-changes feed) moves for
+             # the whole corpus almost daily, so a raw hash cried "changed" every day.
+@@ -176,7 +183,6 @@ def probe(src: dict, seeds: dict[str, str] | None = None) -> tuple[str | None, s
+ 
+ 
+ def _upsert_sources(conn) -> None:
+-    import json
+     with conn.cursor() as cur:
+         for s in SOURCES:
+             cur.execute(
+@@ -211,6 +217,49 @@ def _last_signal(conn, source_id: str) -> str | None:
+     return row[0] if row else None
+ 
+ 
++def changed_since(prev: str | None, sig: str | None) -> bool:
++    """Changed only when BOTH a previous and a current signal exist and differ. A probe-fail
++    (signal NULL) is never a change — neither the failure itself nor the recovery after it."""
++    return bool(prev is not None and sig is not None and sig != prev)
++
++
++def record_check(conn, source_id: str, sig: str | None, changed: bool, note: str) -> None:
++    """Append one `source_checks` row and commit — the single writer of the probe audit trail,
++    shared by this light probe and the watchers that poll on their own schedule."""
++    with conn.cursor() as cur:
++        cur.execute("INSERT INTO source_checks (source_id, signal_value, changed, note) "
++                    "VALUES (%s,%s,%s,%s)", (source_id, sig, changed, note))
++    conn.commit()
++
++
++def _status(sig: str | None, note: str, changed: bool) -> str:
++    """The daily line's verdict for one source, worst first: a probe-fail and a bad URL are 🔴,
++    pin drift is a STATUS of its own (not just a note), then 🟡 changed / ⚪ manual / 🟢 ok."""
++    if sig is None and "manual" not in note:
++        return "🔴 probe-fail"
++    if re.search(r"HTTP [45]\d\d", note):
++        return "🔴 bad-url"
++    if "off-pin" in note:            # pin drift is a STATUS, not just a note
++        return "⚠ off-pin"
++    if changed:
++        return "🟡 changed"
++    if "manual" in note:
++        return "⚪ manual"
++    return "🟢 ok"
++
++
++def _check_source(conn, s: dict, seeds: dict[str, str]) -> dict:
++    """Poll ONE source against its last successful signal, record the check, and return the row the
++    report and the console line are both built from."""
++    prev = _last_signal(conn, s["source_id"])
++    sig, note = probe(s, seeds)
++    changed = changed_since(prev, sig)
++    record_check(conn, s["source_id"], sig, changed, note)
++    return {"source_id": s["source_id"], "probe_kind": s["probe_kind"], "signal": sig,
++            "changed": changed, "cadence": s["cadence"], "slo": s["staleness_slo_days"],
++            "status": _status(sig, note, changed), "note": note}
++
++
+ def _write_report(rows: list[dict]) -> Path:
+     out = REPO_ROOT / "reports" / "freshness.md"
+     out.parent.mkdir(parents=True, exist_ok=True)
+@@ -243,29 +292,10 @@ def main() -> int:
+                 continue  # manual watchers are UPSERTed above but polled by their OWN
+                           # collectors (rada_backstop.run below / rada.reachability) — the light
+                           # probe must not write a duplicate NULL source_checks row for them.
+-            prev = _last_signal(conn, s["source_id"])
+-            sig, note = probe(s, seeds)
+-            changed = bool(prev is not None and sig is not None and sig != prev)
+-            with conn.cursor() as cur:
+-                cur.execute("INSERT INTO source_checks (source_id, signal_value, changed, note) "
+-                            "VALUES (%s,%s,%s,%s)", (s["source_id"], sig, changed, note))
+-            conn.commit()
+-            if sig is None and "manual" not in note:
+-                status = "🔴 probe-fail"
+-            elif re.search(r"HTTP [45]\d\d", note):
+-                status = "🔴 bad-url"
+-            elif "off-pin" in note:            # pin drift is a STATUS, not just a note
+-                status = "⚠ off-pin"
+-            elif changed:
+-                status = "🟡 changed"
+-            elif "manual" in note:
+-                status = "⚪ manual"
+-            else:
+-                status = "🟢 ok"
+-            report_rows.append({"source_id": s["source_id"], "probe_kind": s["probe_kind"],
+-                                "signal": sig, "changed": changed, "cadence": s["cadence"],
+-                                "slo": s["staleness_slo_days"], "status": status, "note": note})
+-            print(f"  {s['source_id']:14s} {status:14s} sig={str(sig)[:30]!r} | {note[:50]}")
++            row = _check_source(conn, s, seeds)
++            report_rows.append(row)
++            print(f"  {row['source_id']:14s} {row['status']:14s} "
++                  f"sig={str(row['signal'])[:30]!r} | {row['note'][:50]}")
+ 
+         # Second contour — a per-act datred/edcnt backstop closes the r.txt
+         # presence-window blind spot. Gate: rada reported changed, or 7 days elapsed.
+diff --git a/pipelines/freshness/rada_backstop.py b/pipelines/freshness/rada_backstop.py
+index 2bb49fb..09424f1 100644
+--- a/pipelines/freshness/rada_backstop.py
++++ b/pipelines/freshness/rada_backstop.py
+@@ -27,6 +27,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+ 
+ from pipelines.checks._common import get_json  # noqa: E402
+ from pipelines.db import connect, run_migrations  # noqa: E402
++# the source_checks trail has ONE writer, in probe.py — this watcher reuses it rather than
++# re-spelling the same read/compare/INSERT here.
++from pipelines.freshness.probe import (  # noqa: E402
++    _last_signal as _source_last_signal, changed_since, record_check)
+ from pipelines.rada import budget  # noqa: E402
+ from pipelines.rada.fetch_cards import SEED_ACTS, edition_date  # noqa: E402
+ 
+@@ -81,11 +85,7 @@ def _last_run_at(conn) -> datetime | None:
+ 
+ 
+ def _last_signal(conn) -> str | None:
+-    with conn.cursor() as cur:
+-        cur.execute("SELECT signal_value FROM source_checks WHERE source_id=%s "
+-                    "AND signal_value IS NOT NULL ORDER BY checked_at DESC LIMIT 1", (SOURCE_ID,))
+-        row = cur.fetchone()
+-    return row[0] if row else None
++    return _source_last_signal(conn, SOURCE_ID)
+ 
+ 
+ def should_run(conn, rada_changed: bool, now: datetime | None = None, n_days: int = N_DAYS) -> bool:
+@@ -97,14 +97,10 @@ def should_run(conn, rada_changed: bool, now: datetime | None = None, n_days: in
+     return last is None or (now - last).days >= n_days
+ 
+ 
+-def run(conn, rada_changed: bool = False, fetch=get_json, now: datetime | None = None,
+-        n_days: int = N_DAYS) -> dict:
+-    """Execute the backstop if the gate is open. Returns a summary dict."""
+-    if not should_run(conn, rada_changed, now, n_days):
+-        return {"ran": False, "reason": "gate closed (<N days and rada unchanged)"}
+-    # The source_registry row is owned by the SINGLE writer (probe._upsert_sources via
+-    # freshness/sources.py 'rada-backstop'); the inline self-INSERT here was removed. This
+-    # watcher writes ONLY source_checks (below).
++def _collect(conn, fetch) -> tuple[list[dict], list[str]]:
++    """Re-pull every seed act's card and compare it with `editions` → (comparisons, errors).
++    A budget stop or a fetch failure is RECORDED, never raised: one unavailable card must not
++    crash the daily probe that calls this."""
+     results: list[dict] = []
+     errors: list[str] = []
+     for nreg in SEED_ACTS:
+@@ -121,32 +117,47 @@ def run(conn, rada_changed: bool = False, fetch=get_json, now: datetime | None =
+         except Exception:  # noqa: BLE001
+             pass
+         results.append(compare(nreg, card, db_state(conn, nreg)))
++    return results, errors
++
++
++def _signal(results: list[dict], complete: bool) -> str | None:
++    """signal = hash of per-act (edcnt, datred). Only a COMPLETE run (every
++    seed act fetched+compared) yields a real signal. A partial run (budget-deferred or
++    fetch-errored acts) would hash a SUBSET → its hash differs from the full-set
++    baseline and flips `changed` to a FALSE 🟡; an all-errored run has nothing to hash.
++    Both write signal_value=NULL → `changed` stays False (no false 🟡) AND the 7-day
++    gate — which counts non-NULL runs only — is not reset, so the deferred acts are
++    retried at the next opportunity instead of being silenced for a week."""
++    if not (results and complete):
++        return None
++    state = "|".join(f"{r['nreg']}:{r['edcnt_card']}:{r['datred_card']}" for r in results)
++    return hashlib.sha256(state.encode("utf-8")).hexdigest()[:16]
++
++
++def _note(results: list[dict], mism: list[dict], errors: list[str], kind: str) -> str:
++    """The one-line summary stored with the check and printed by the daily probe."""
++    return (f"{len(results)}/{len(SEED_ACTS)} acts checked ({kind}); mismatches: "
++            f"{', '.join(r['nreg'] for r in mism) if mism else 'none'}"
++            + (f"; fetch-errors: {len(errors)}" if errors else ""))
++
++
++def run(conn, rada_changed: bool = False, fetch=get_json, now: datetime | None = None,
++        n_days: int = N_DAYS) -> dict:
++    """Execute the backstop if the gate is open. Returns a summary dict."""
++    if not should_run(conn, rada_changed, now, n_days):
++        return {"ran": False, "reason": "gate closed (<N days and rada unchanged)"}
++    # The source_registry row is owned by the SINGLE writer (probe._upsert_sources via
++    # freshness/sources.py 'rada-backstop'); the inline self-INSERT here was removed. This
++    # watcher writes ONLY source_checks (below).
++    results, errors = _collect(conn, fetch)
+ 
+     mism = [r for r in results if r["mismatch"]]
+-    # signal = hash of per-act (edcnt, datred). Only a COMPLETE run (every
+-    # seed act fetched+compared) yields a real signal. A partial run (budget-deferred or
+-    # fetch-errored acts) would hash a SUBSET → its hash differs from the full-set
+-    # baseline and flips `changed` to a FALSE 🟡; an all-errored run has nothing to hash.
+-    # Both write signal_value=NULL → `changed` stays False (no false 🟡) AND the 7-day
+-    # gate — which counts non-NULL runs only — is not reset, so the deferred acts are
+-    # retried at the next opportunity instead of being silenced for a week.
+     complete = len(results) == len(SEED_ACTS)
+-    sig: str | None
+-    if results and complete:
+-        state = "|".join(f"{r['nreg']}:{r['edcnt_card']}:{r['datred_card']}" for r in results)
+-        sig = hashlib.sha256(state.encode("utf-8")).hexdigest()[:16]
+-    else:
+-        sig = None
++    sig = _signal(results, complete)
+     kind = "complete" if complete else ("all-error" if not results else "partial")
+-    note = (f"{len(results)}/{len(SEED_ACTS)} acts checked ({kind}); mismatches: "
+-            f"{', '.join(r['nreg'] for r in mism) if mism else 'none'}"
+-            + (f"; fetch-errors: {len(errors)}" if errors else ""))
+-    prev = _last_signal(conn)
+-    changed = bool(prev is not None and sig is not None and sig != prev)
+-    with conn.cursor() as cur:
+-        cur.execute("INSERT INTO source_checks (source_id, signal_value, changed, note) "
+-                    "VALUES (%s,%s,%s,%s)", (SOURCE_ID, sig, changed, note))
+-    conn.commit()
++    note = _note(results, mism, errors, kind)
++    changed = changed_since(_last_signal(conn), sig)
++    record_check(conn, SOURCE_ID, sig, changed, note)
+     return {"ran": True, "results": results, "mismatches": mism, "errors": errors,
+             "changed": changed, "signal": sig, "note": note, "complete": complete}
+ 
+diff --git a/pipelines/freshness/rada_sample.py b/pipelines/freshness/rada_sample.py
+index c03323e..1ee1497 100644
+--- a/pipelines/freshness/rada_sample.py
++++ b/pipelines/freshness/rada_sample.py
+@@ -16,7 +16,6 @@ Run:  uv run python -m pipelines.freshness.rada_sample
+ from __future__ import annotations
+ 
+ import hashlib
+-import re
+ import sys
+ from datetime import datetime, timezone
+ from pathlib import Path
+@@ -31,7 +30,7 @@ for _s in (sys.stdout, sys.stderr):
+ 
+ from pipelines.db import connect, run_migrations  # noqa: E402
+ from pipelines.freshness.probe import (  # noqa: E402
+-    _decode_rada, _get, seed_alias_map, seed_hits)
++    _decode_rada, _get, is_plain_rtxt, seed_alias_map, seed_hits)
+ from pipelines.paths import RAW_DIR, rel  # noqa: E402
+ 
+ RTXT_URL = "https://data.rada.gov.ua/laws/main/r.txt"
+@@ -39,6 +38,21 @@ SAMPLE_DIR = RAW_DIR / "rada" / "samples"
+ ARTIFACT_ID = "F1-rada-rtxt"
+ 
+ 
++def _record_snapshot(conn, sha: str, raw: bytes, out: Path) -> None:
++    """Upsert the `snapshots` row for this sample: sha256 + bytes + the DATA_DIR-relative path."""
++    with conn.cursor() as cur:
++        cur.execute(
++            """INSERT INTO snapshots
++               (artifact_id,url,sha256,bytes,kind,http_status,raw_path,fetched_at)
++               VALUES (%s,%s,%s,%s,'rada-rtxt-sample',200,%s,%s)
++               ON CONFLICT (artifact_id,url) DO UPDATE SET sha256=EXCLUDED.sha256,
++               bytes=EXCLUDED.bytes, raw_path=EXCLUDED.raw_path,
++               fetched_at=EXCLUDED.fetched_at""",
++            (ARTIFACT_ID, RTXT_URL, sha, len(raw), rel(out),
++             datetime.now(timezone.utc)))
++    conn.commit()
++
++
+ def main() -> int:
+     run_migrations()
+     # No redirect-follow on data.rada — a 302 is a UA-lost / anti-DDoS anomaly,
+@@ -50,7 +64,7 @@ def main() -> int:
+     text = _decode_rada(r)
+     # Same guard as probe.py: a 200 that is not a plain r.txt (stub/captcha) is refused,
+     # never snapshotted as a real sample.
+-    if len(text.strip()) < 50 or "<html" in text[:2000].lower() or not re.search(r"\d+-\d", text):
++    if not is_plain_rtxt(text):
+         print(f"HTTP 200 but body is not a plain r.txt ({len(text)} B) — refused")
+         return 1
+ 
+@@ -61,17 +75,7 @@ def main() -> int:
+     out.write_bytes(raw)
+ 
+     with connect() as conn:
+-        with conn.cursor() as cur:
+-            cur.execute(
+-                """INSERT INTO snapshots
+-                   (artifact_id,url,sha256,bytes,kind,http_status,raw_path,fetched_at)
+-                   VALUES (%s,%s,%s,%s,'rada-rtxt-sample',200,%s,%s)
+-                   ON CONFLICT (artifact_id,url) DO UPDATE SET sha256=EXCLUDED.sha256,
+-                   bytes=EXCLUDED.bytes, raw_path=EXCLUDED.raw_path,
+-                   fetched_at=EXCLUDED.fetched_at""",
+-                (ARTIFACT_ID, RTXT_URL, sha, len(raw), rel(out),
+-                 datetime.now(timezone.utc)))
+-        conn.commit()
++        _record_snapshot(conn, sha, raw, out)
+         seeds = seed_alias_map(conn)
+ 
+     present = seed_hits(text, seeds)

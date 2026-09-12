@@ -1,0 +1,7 @@
+CONFIRMED
+
+[LIVE] `python -m unittest tests.test_units_ledger` in the tree runs 5 tests with exactly one failure, `test_growth_inside_a_known_edition_detected`: ledger `{'3543-12|2026-07-31': 112}` against live `113` yields `changed_or_deleted == {}` where the pre-existing test expects `{'ledger': 112, 'db': 113}`, while intact / partial-deletion / vanished-edition / new-edition all still pass — the loss is one-directional, as the finding says.
+
+[LIVE] Evaluating both predicates on identical inputs: injection (+1) → current `{}` vs pre-change `{'ledger': 112, 'db': 113}`; deletion (−1) and a vanished edition are still flagged by both. Only growth inside a known edition became invisible.
+
+[CODE] It is not intended or compensated: `docs/ARCHITECTURE.md:122-124` gives the ledger's purpose as making "an injection into a known edition" visible when totals stay above their floors, the module docstring and the `diff()` docstring (both untouched by the diff) still promise "count drift", `pipelines/units_ledger.py:52-58` adds no later check, and grep over the whole tree finds no other consumer of `diff`/`changed_or_deleted` — only the docs, the test and the inventory. The author's description covers only the model-pin split and the index-builder helpers, so this hunk is unexplained scope. One correction to the write-up: the failing test is tracked in `verification/test_inventory.json` and CI's `unit-tests` gate runs `unittest discover -s tests`, so the regression does turn CI red — it is the data-gate hole, not the change itself, that is silent.

@@ -301,6 +301,40 @@ before.
 
 All three have the shape of the v3 misses: the function is tested, the property beside it is not.
 
+### The review layer, round 2: large mixed changes, several defects each, an ablation — 10 of 10
+
+Protocol, items, key, every raw output and the grading:
+[`review_layer/round2/`](review_layer/round2/). The protocol, the items and the key were committed
+before any reviewer ran.
+
+Six behaviour-preserving refactors of 82 to 250 changed lines across one to six files, written by an
+agent that never opened a catalogue: four of them carry two or three v4 defects planted inside the
+change, two are clean. Three configurations reviewed each one — the `change-reviewer` with its
+skeptic, the generic ECC reviewer on the same tree, and the same generic reviewer on a tree with
+`AGENTS.md`, `CLAUDE.md` and `.claude/` removed.
+
+| Reviewer | Defects found | False alarms |
+|---|---|---|
+| change-reviewer + finding-skeptic (the layer as shipped) | 10 of 10 | 0 |
+| generic code-reviewer (ECC) | 10 of 10 | 0 |
+| generic code-reviewer, agent rules removed | 10 of 10 | 0 |
+
+All three blocked every bug item and passed both clean ones, with no finding of any severity on a
+clean change and none anywhere that is not a planted defect. The skeptic examined all ten serious
+findings of the change-reviewer, confirmed all ten and rejected none.
+
+Three things this round puts on the record. Eight of the ten defects turn a gate red, and the
+reviewers ran the suite, so on those eight the gates did part of the work and the reviewer read the
+failure and explained it; only W05 and W11 are invisible to the gates, and all three configurations
+found those two as well. The ablation removed the rule files but not the written invariants —
+`docs/ARCHITECTURE.md` lists five of them in one place — and the reviewer without the rules cited
+that numbering instead, so the round shows that removing the rule files changes nothing, not that
+written invariants change nothing. And `verification/README.md` itself stayed in the trees, where the
+v4 table above names W05 and W11: three of the 28 outputs cite it, after their own live
+reproduction, so those two defects are contaminated and the clean reading of the round is 8 of 8 for
+every configuration. All of this is in
+[`review_layer/round2/RESULTS.md`](review_layer/round2/RESULTS.md).
+
 ## What these numbers are not
 
 - The seeded-bug numbers measure the deterministic gates only. The review layer is measured

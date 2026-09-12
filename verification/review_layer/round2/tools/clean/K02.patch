@@ -1,0 +1,358 @@
+diff --git a/eval/harness.py b/eval/harness.py
+index 5c0ec67..82ec789 100644
+--- a/eval/harness.py
++++ b/eval/harness.py
+@@ -39,7 +39,8 @@ for _s in (sys.stdout, sys.stderr):
+     except (AttributeError, ValueError):
+         pass
+ 
+-from eval.retrieval_eval import GoldFormatError, _known_acts, _load_gold  # noqa: E402 — reuse
++from eval.retrieval_eval import (  # noqa: E402 — reuse
++    GoldFormatError, _iter_jsonl, _known_acts, _load_gold)
+ 
+ GOLDEN_DIR = Path(__file__).resolve().parent / "golden"
+ ETALONS = Path(__file__).resolve().parent / "data" / "questions_v0.jsonl"
+@@ -141,6 +142,42 @@ def _run_safe(run_fn, row):
+         return None, f"{type(exc).__name__}: {exc}"
+ 
+ 
++def _tally(bucket: dict, tax: dict, suf: dict, lint: dict, gold_n: int) -> None:
++    """Add ONE reference question's verdict to a counter bucket — the overall aggregate and the
++    question's class bucket are counted the same way, so they cannot drift apart."""
++    bucket["n"] += 1
++    bucket["gold"] += gold_n
++    bucket["correct"] += len(tax["correct"])
++    bucket["null"] += len(tax["null"])
++    bucket["wrong_pick"] += len(tax["wrong_pick_candidates"])
++    bucket["abstain"] += int(tax["abstain"])
++    bucket["drift"] += int(tax["precision_drift_signal"])
++    bucket["hallucination"] += tax["hallucination"]
++    bucket["insufficient"] += int(not suf["sufficient"])                   # sufficient@k
++    bucket["diyi_unbacked"] += len(lint.get("diyi_refs_unbacked") or [])   # action lint
++    bucket["ambiguous_act"] += len(lint.get("prose_refs_ambiguous_act") or [])  # act-scoped
++    bucket["vocab_flags"] += len(lint.get("prose_internal_vocab") or [])   # vocab lint
++
++
++def _prose(result: dict) -> dict:
++    """PERSIST the dovidka prose so a lint-flagged phrase is re-readable from the artifact, not
++    only re-runnable. SAFE: the harness runs ONLY on reference questions (gold — public/synthetic,
++    PII-free), NEVER on user data. Do NOT reuse write_run for runs over user questions."""
++    dov = result.get("dovidka") or {}
++    return {"vysnovok": dov.get("vysnovok") or "",
++            "diyi": [s for s in (dov.get("diyi") or []) if isinstance(s, str)],
++            "tezy": [t.get("teza") or "" for t in (dov.get("obgruntuvannya") or [])]}
++
++
++def _pinned(result: dict) -> dict:
++    """PIN the retrieved set per question: a replay must diff against the SAME candidate set (the
++    earlier runner pinned nothing). candidates + resolved + request_ids make the run replayable."""
++    return {"candidates": [[c["id"], c["act"], c["unit_path"]]
++                           for c in result.get("candidates", [])],
++            "resolved": list(result.get("resolved", {})),
++            "request_ids": [a.get("request_id") for a in result.get("attempts", [])]}
++
++
+ def score(rows: list[dict], run_fn) -> dict:
+     """Run each reference question through `run_fn(row) -> result`, classify, aggregate overall +
+     by class. run_fn is generate (LIVE) or a stub. Returns metrics + per-question detail +
+@@ -160,35 +197,9 @@ def score(rows: list[dict], run_fn) -> dict:
+         #                                       numerator (review fix: a duplicate gold line was
+         #                                       undercounting recall, correct 1 / gold 2 = 0.5).
+         for bucket in (agg, by_class[row.get("class", "all")]):
+-            bucket["n"] += 1
+-            bucket["gold"] += gold_n
+-            bucket["correct"] += len(tax["correct"])
+-            bucket["null"] += len(tax["null"])
+-            bucket["wrong_pick"] += len(tax["wrong_pick_candidates"])
+-            bucket["abstain"] += int(tax["abstain"])
+-            bucket["drift"] += int(tax["precision_drift_signal"])
+-            bucket["hallucination"] += tax["hallucination"]
+-            bucket["insufficient"] += int(not suf["sufficient"])                   # sufficient@k
+-            bucket["diyi_unbacked"] += len(lint.get("diyi_refs_unbacked") or [])   # action lint
+-            bucket["ambiguous_act"] += len(lint.get("prose_refs_ambiguous_act") or [])  # act-scoped
+-            bucket["vocab_flags"] += len(lint.get("prose_internal_vocab") or [])   # vocab lint
+-        # PERSIST the dovidka prose so a lint-flagged phrase is re-readable from the artifact, not
+-        # only re-runnable. SAFE: the harness runs ONLY on reference questions (gold —
+-        # public/synthetic, PII-free), NEVER on user data. Do NOT reuse write_run for runs over
+-        # user questions.
+-        dov = result.get("dovidka") or {}
+-        prose = {"vysnovok": dov.get("vysnovok") or "",
+-                 "diyi": [s for s in (dov.get("diyi") or []) if isinstance(s, str)],
+-                 "tezy": [t.get("teza") or "" for t in (dov.get("obgruntuvannya") or [])]}
+-        # PIN the retrieved set per question: a replay must diff against the SAME candidate set
+-        # (the earlier runner pinned nothing). candidates + resolved + request_ids make the run
+-        # replayable.
+-        pinned = {"candidates": [[c["id"], c["act"], c["unit_path"]]
+-                                 for c in result.get("candidates", [])],
+-                  "resolved": list(result.get("resolved", {})),
+-                  "request_ids": [a.get("request_id") for a in result.get("attempts", [])]}
++            _tally(bucket, tax, suf, lint, gold_n)
+         detail.append({"id": row.get("id"), "class": row.get("class"), "taxonomy": tax,
+-                       "sufficient": suf, "dovidka": prose, "pinned": pinned,
++                       "sufficient": suf, "dovidka": _prose(result), "pinned": _pinned(result),
+                        "lint": {k: lint.get(k) or [] for k in LINT_KEYS}})
+     return {"overall": agg, "by_class": {k: v for k, v in by_class.items()}, "detail": detail,
+             "errors": errors}
+@@ -206,10 +217,7 @@ def load_golden(golden_dir: Path = GOLDEN_DIR) -> list[dict]:
+     actually fail (mechanical needs cited/abstain; precision_drift needs must_not_contain)."""
+     cases = []
+     for f in sorted(golden_dir.glob("*.jsonl")):
+-        for lineno, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
+-            if not line.strip():
+-                continue
+-            c = json.loads(line)
++        for lineno, c in _iter_jsonl(f):
+             where = f"golden {f.name}:{lineno}"
+             if not c.get("bug_ref"):
+                 raise GoldenFormatError(f"{where} — bug_ref required (never auto-rebased)")
+@@ -249,24 +257,28 @@ def check_golden(case: dict, result: dict) -> tuple[bool, list[str]]:
+     return (not hits, [f"drift-signal: prose contains «{p}»" for p in hits])
+ 
+ 
++def _stub_result(vysnovok: str, cands: list[dict], abstain: bool) -> dict:
++    """The generate()-shaped envelope every offline stub returns: the candidate set, the resolved
++    map it implies, the abstain flag on both axes, and a clean lint."""
++    return {"dovidka": {"vysnovok": vysnovok, "obgruntuvannya": [], "abstain": abstain},
++            "resolved": {c["id"]: c["citation"] for c in cands}, "candidates": cands,
++            "abstained": abstain, "lint": {"prose_refs_unbacked": [], "leaked_cids": []}}
++
++
+ def _stub_run(row: dict) -> dict:
+     """Mocked generate result (the harness runs with NO API and NO LM). Echoes the FIRST gold
+     citation as a candidate the model 'cited', so the taxonomy path is exercised offline."""
+     exp = row.get("expected") or []
+     cands = [{"id": f"C{i}", "act": a, "unit_path": art, "citation": f"{a} {art}"}
+              for i, (a, art) in enumerate(exp, 1)]
+-    return {"dovidka": {"vysnovok": "[stub]", "obgruntuvannya": [], "abstain": not exp},
+-            "resolved": {c["id"]: c["citation"] for c in cands}, "candidates": cands,
+-            "abstained": not exp, "lint": {"prose_refs_unbacked": [], "leaked_cids": []}}
++    return _stub_result("[stub]", cands, not exp)
+ 
+ 
+ def _stub_abstain(row: dict) -> dict:
+     """A DEGRADED-pipeline stub that ALWAYS abstains / cites nothing — it models a broken pipeline
+     so a MECHANICAL golden goes RED. Used by the CLI gate sabotage test: --backend stub-abstain
+     must make --mode gate exit 1 (which proves the golden RED leg gates end to end)."""
+-    return {"dovidka": {"vysnovok": "[stub-abstain]", "obgruntuvannya": [], "abstain": True},
+-            "resolved": {}, "candidates": [], "abstained": True,
+-            "lint": {"prose_refs_unbacked": [], "leaked_cids": []}}
++    return _stub_result("[stub-abstain]", [], True)
+ 
+ 
+ def _stub_hallucinate(row: dict) -> dict:
+@@ -377,6 +389,15 @@ def _run_dir() -> Path:
+     return d
+ 
+ 
++def _write_jsonl(path: Path, header: dict, rows: list[dict]) -> Path:
++    """One header line, then one line per row — the shape both persisted artifacts share."""
++    with open(path, "w", encoding="utf-8") as fh:
++        fh.write(json.dumps(header, ensure_ascii=False) + "\n")
++        for r in rows:
++            fh.write(json.dumps(r, ensure_ascii=False) + "\n")
++    return path
++
++
+ def write_run(res: dict, run_id: str, golden: dict | None = None) -> Path:
+     """Persist a run — overall / by-class metrics + the PINNED candidate set & taxonomy per
+     reference question — to $DATA_DIR/eval/t13/<run_id>.jsonl (data, not git; a UNIQUE run_id means
+@@ -387,25 +408,15 @@ def write_run(res: dict, run_id: str, golden: dict | None = None) -> Path:
+     if golden is not None:
+         header["golden"] = {"mechanical_red": golden.get("mechanical_red", []),
+                             "drift_signals": golden.get("drift_signals", [])}
+-    path = _run_dir() / f"{run_id}.jsonl"
+-    with open(path, "w", encoding="utf-8") as fh:
+-        fh.write(json.dumps(header, ensure_ascii=False) + "\n")
+-        for d in res["detail"]:
+-            fh.write(json.dumps(d, ensure_ascii=False) + "\n")
+-    return path
++    return _write_jsonl(_run_dir() / f"{run_id}.jsonl", header, res["detail"])
+ 
+ 
+ def write_noise(noise: dict, run_id: str) -> Path:
+     """Persist a noise measurement to $DATA_DIR/eval/t13/noise_<run_id>.jsonl: the measurement MUST
+     be a stored artifact — per-pass mechanical keys + request_ids + cited sets, not just a number
+     quoted in prose."""
+-    path = _run_dir() / f"noise_{run_id}.jsonl"
+-    with open(path, "w", encoding="utf-8") as fh:
+-        head = {k: v for k, v in noise.items() if k != "detail"}
+-        fh.write(json.dumps(head, ensure_ascii=False) + "\n")
+-        for d in noise["detail"]:
+-            fh.write(json.dumps(d, ensure_ascii=False) + "\n")
+-    return path
++    head = {k: v for k, v in noise.items() if k != "detail"}
++    return _write_jsonl(_run_dir() / f"noise_{run_id}.jsonl", head, noise["detail"])
+ 
+ 
+ def _acts_from_gold(path: Path) -> set[str]:
+@@ -415,10 +426,7 @@ def _acts_from_gold(path: Path) -> set[str]:
+     `_load_gold` (two-token citation form, ст.N shape, gold_key_points / theme types) still runs
+     unchanged. Pass --known-acts to validate against an explicit list instead."""
+     acts: set[str] = set()
+-    for line in path.read_text(encoding="utf-8").splitlines():
+-        if not line.strip():
+-            continue
+-        row = json.loads(line)
++    for _lineno, row in _iter_jsonl(path):
+         if row.get("expected_act"):                      # smoke format
+             acts.add(str(row["expected_act"]))
+         for citation in row.get("gold_citations", []):   # 'act_nreg ст.N' — the act is token 1
+@@ -428,6 +436,33 @@ def _acts_from_gold(path: Path) -> set[str]:
+     return acts
+ 
+ 
++def _known_act_set(args, conn) -> set[str]:
++    """The acts a gold citation may name: --known-acts wins, else the live corpus, else the acts
++    the gold file itself names (the offline substitute)."""
++    if args.known_acts:
++        return {a.strip() for a in args.known_acts.split(",") if a.strip()}
++    if conn is not None:
++        return _known_acts(conn)
++    return _acts_from_gold(Path(args.etalons))
++
++
++def _run_fn(backend: str, conn):
++    """The generator under evaluation: an offline stub, or the LIVE pipeline — the ONLY branch that
++    consumes the database. The stub table is built HERE, per call, so a test that patches a stub on
++    the module is honoured (a module-level table would freeze the original function)."""
++    stubs = {"stub": _stub_run,
++             "stub-abstain": _stub_abstain,
++             "stub-hallucinate": _stub_hallucinate,      # gate-breach pin: → RED
++             "stub-flip": _stub_flip}                    # noise-exit pin: set flips → RED
++    if backend in stubs:
++        return stubs[backend]
++    from pipelines.rag.generate import generate
++
++    def run_fn(row):
++        return generate(conn, row["question"], as_of=row.get("as_of"))
++    return run_fn
++
++
+ def main() -> int:
+     ap = argparse.ArgumentParser(description="Eval harness + gate over the reference questions")
+     ap.add_argument("--etalons", default=str(ETALONS),
+@@ -465,13 +500,7 @@ def main() -> int:
+         # DETERMINISTIC checks (run in EVERY tier incl. --no-llm): the gold file validates through
+         # the reused fail-loud validator, and the golden corpus loads (shape + TEETH).
+         try:
+-            if args.known_acts:
+-                known = {a.strip() for a in args.known_acts.split(",") if a.strip()}
+-            elif conn is not None:
+-                known = _known_acts(conn)
+-            else:
+-                known = _acts_from_gold(Path(args.etalons))
+-            rows = _load_gold(Path(args.etalons), known)
++            rows = _load_gold(Path(args.etalons), _known_act_set(args, conn))
+             golden = load_golden()
+         except (GoldFormatError, GoldenFormatError) as exc:
+             print(f"!! FORMAT ERROR — {exc}")
+@@ -491,19 +520,7 @@ def main() -> int:
+         if args.limit:
+             scorable = scorable[:args.limit]
+ 
+-        if args.backend == "stub":
+-            run_fn = _stub_run
+-        elif args.backend == "stub-abstain":
+-            run_fn = _stub_abstain
+-        elif args.backend == "stub-hallucinate":
+-            run_fn = _stub_hallucinate                             # gate-breach pin: → RED
+-        elif args.backend == "stub-flip":
+-            run_fn = _stub_flip                                    # noise-exit pin: set flips → RED
+-        else:
+-            from pipelines.rag.generate import generate
+-
+-            def run_fn(row):                          # the ONLY branch that consumes the database
+-                return generate(conn, row["question"], as_of=row.get("as_of"))
++        run_fn = _run_fn(args.backend, conn)
+ 
+         if args.mode == "noise":                     # MEASURE the temperature-0 noise FIRST
+             noise = measure_noise(scorable, run_fn, args.passes)
+diff --git a/eval/retrieval_eval.py b/eval/retrieval_eval.py
+index 89f9d74..5bfcd25 100644
+--- a/eval/retrieval_eval.py
++++ b/eval/retrieval_eval.py
+@@ -30,6 +30,7 @@ import json
+ import re
+ import sys
+ from pathlib import Path
++from typing import Iterator
+ 
+ for _s in (sys.stdout, sys.stderr):
+     try:
+@@ -55,6 +56,15 @@ class GoldFormatError(ValueError):
+     than an error, because it would corrupt the calibration built on top of it."""
+ 
+ 
++def _iter_jsonl(path: Path) -> Iterator[tuple[int, dict]]:
++    """(1-based line number, parsed row) for every non-blank line of a JSONL file. Blank lines are
++    skipped but still COUNT, so the line number in a fail-loud message points at the real line of
++    the file. The one reader for the gold files and the golden corpus alike."""
++    for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
++        if line.strip():
++            yield lineno, json.loads(line)
++
++
+ def _parse_citation(s: str, known_acts: set[str], lineno: int) -> tuple[str, str]:
+     parts = str(s).split()
+     if len(parts) < 2:
+@@ -69,31 +79,42 @@ def _parse_citation(s: str, known_acts: set[str], lineno: int) -> tuple[str, str
+     return act, art
+ 
+ 
++def _expected(row: dict, known_acts: set[str], lineno: int) -> list[tuple[str, str]]:
++    """The row's gold citations as [(act, article)], every one VALIDATED. Supports the smoke format
++    (expected_act / expected_article) and the questions_v0 format (gold_citations)."""
++    expected: list[tuple[str, str]] = []
++    if row.get("expected_act") or row.get("expected_article"):   # smoke format — validate too
++        expected.append(_parse_citation(f"{row.get('expected_act','')} "
++                                        f"{row.get('expected_article','')}", known_acts, lineno))
++    for g in row.get("gold_citations", []):                      # questions_v0 gold
++        expected.append(_parse_citation(g, known_acts, lineno))
++    return expected
++
++
++def _annotations(row: dict, lineno: int) -> tuple[list[str], str | None]:
++    """(gold_key_points, theme), VALIDATED here — fail-loud, not passthrough, before the generation
++    harness consumes them. retrieval_eval itself ignores the fields; carrying them through this ONE
++    validator is what stops a second one from growing next to it."""
++    kps = row.get("gold_key_points", [])
++    if not isinstance(kps, list) or any(not isinstance(k, str) for k in kps):
++        raise GoldFormatError(f"gold line {lineno}: gold_key_points must be a list of strings")
++    theme = row.get("theme")
++    if theme is not None and not isinstance(theme, str):
++        raise GoldFormatError(f"gold line {lineno}: theme must be a string (or absent)")
++    return kps, theme
++
++
+ def _load_gold(path: Path, known_acts: set[str]) -> list[dict]:
+     """Normalise each row to {question, as_of, expected:[(act, article)]}, VALIDATING every gold
+     citation (fail-loud on a malformed one). Supports the smoke format (expected_act /
+     expected_article) and the questions_v0 format (gold_citations, 'act_nreg ст.N'). A row with NO
+     gold at all is kept with expected=[] (unmarked → skipped by main, not an error)."""
+     out = []
+-    for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+-        if not line.strip():
+-            continue
+-        r = json.loads(line)
+-        expected: list[tuple[str, str]] = []
+-        if r.get("expected_act") or r.get("expected_article"):   # smoke format — validate too
+-            expected.append(_parse_citation(f"{r.get('expected_act','')} "
+-                                            f"{r.get('expected_article','')}", known_acts, lineno))
+-        for g in r.get("gold_citations", []):                    # questions_v0 gold
+-            expected.append(_parse_citation(g, known_acts, lineno))
++    for lineno, r in _iter_jsonl(path):
++        expected = _expected(r, known_acts, lineno)
+         # Carry gold_key_points + theme so the generation harness REUSES this one fail-loud
+-        # validator instead of growing a second one — and VALIDATE them here (fail-loud, not
+-        # passthrough, before the harness consumes them). retrieval_eval itself ignores the fields.
+-        kps = r.get("gold_key_points", [])
+-        if not isinstance(kps, list) or any(not isinstance(k, str) for k in kps):
+-            raise GoldFormatError(f"gold line {lineno}: gold_key_points must be a list of strings")
+-        theme = r.get("theme")
+-        if theme is not None and not isinstance(theme, str):
+-            raise GoldFormatError(f"gold line {lineno}: theme must be a string (or absent)")
++        # validator instead of growing a second one — and VALIDATE them here.
++        kps, theme = _annotations(r, lineno)
+         out.append({"id": r.get("id"), "question": r["question"], "class": r.get("class", "all"),
+                     "as_of": r.get("as_of_date"), "expected": expected, "key_points": kps,
+                     "theme": theme})

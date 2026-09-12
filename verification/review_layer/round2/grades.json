@@ -1,0 +1,44 @@
+{
+  "r2-item01": {
+    "a_raw":     {"caught": [], "false_alarms": 0},
+    "a_skeptic": {"caught": [], "false_alarms": 0},
+    "b_raw":     {"caught": [], "false_alarms": 0},
+    "c_raw":     {"caught": [], "false_alarms": 0},
+    "note": "clean: PASS from all three, no finding of any severity"
+  },
+  "r2-item02": {
+    "a_raw":     {"caught": ["W19", "W13"], "false_alarms": 0},
+    "a_skeptic": {"caught": ["W19", "W13"], "false_alarms": 0},
+    "b_raw":     {"caught": ["W19", "W13"], "false_alarms": 0},
+    "c_raw":     {"caught": ["W19", "W13"], "false_alarms": 0},
+    "note": "all three name probe.py:101 (the canonical nreg dropped from the alias map) and parse_structure.py:841 (the unclosed quote demoted to a warning); both skeptics CONFIRMED"
+  },
+  "r2-item03": {
+    "a_raw":     {"caught": [], "false_alarms": 0},
+    "a_skeptic": {"caught": [], "false_alarms": 0},
+    "b_raw":     {"caught": [], "false_alarms": 0},
+    "c_raw":     {"caught": [], "false_alarms": 0},
+    "note": "clean: PASS from all three, no finding of any severity"
+  },
+  "r2-item04": {
+    "a_raw":     {"caught": ["W09", "W11"], "false_alarms": 0},
+    "a_skeptic": {"caught": ["W09", "W11"], "false_alarms": 0},
+    "b_raw":     {"caught": ["W09", "W11"], "false_alarms": 0},
+    "c_raw":     {"caught": ["W09", "W11"], "false_alarms": 0},
+    "note": "all three name retrieval_eval.py:134 (prefix match without a boundary) and harness.py:529 (the gold leg dropped from the noise gate); both skeptics CONFIRMED"
+  },
+  "r2-item05": {
+    "a_raw":     {"caught": ["W18", "W20", "W14"], "false_alarms": 0},
+    "a_skeptic": {"caught": ["W18", "W20", "W14"], "false_alarms": 0},
+    "b_raw":     {"caught": ["W18", "W20", "W14"], "false_alarms": 0},
+    "c_raw":     {"caught": ["W18", "W20", "W14"], "false_alarms": 0},
+    "note": "all three name chunk.py:139 (the block ordinal dropped from the citation), units_ledger.py:56 (drift only when a count shrinks) and _common.py:58 (redirects followed by default); all three skeptics CONFIRMED"
+  },
+  "r2-item06": {
+    "a_raw":     {"caught": ["W02", "W05", "W08"], "false_alarms": 0},
+    "a_skeptic": {"caught": ["W02", "W05", "W08"], "false_alarms": 0},
+    "b_raw":     {"caught": ["W02", "W05", "W08"], "false_alarms": 0},
+    "c_raw":     {"caught": ["W02", "W05", "W08"], "false_alarms": 0},
+    "note": "all three name retrieval.py:310 (the article suffix dropped from the regex), generate.py:117 (dedup grouping without the act) and api/main.py:164 (the bind address); all three skeptics CONFIRMED"
+  }
+}

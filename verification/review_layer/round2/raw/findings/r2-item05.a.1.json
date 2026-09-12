@@ -1,0 +1,10 @@
+{
+  "file": "pipelines/rada/chunk.py",
+  "line": 139,
+  "severity": "critical",
+  "invariant": "1",
+  "defect": "The затв. branch was rewritten from `f\"{block_title} (затв. {num})\" if block_title else f\"затв. {num}\"` to `block_title or f\"затв. {num}\"`, which drops the block ordinal whenever the block has a title.",
+  "consequence": "Two different approved blocks with the same title collide on one citation string again — 560-2024-п titles both затв.1 and затв.2 «ПОРЯДОК» (76-2023-п likewise), the exact defect fixed at acceptance 2026-07-17 (23 strings shared by 46 chunks). A citation then no longer addresses exactly one atom_id, so the structural citation gate can confirm a cited id exists but not that the string resolves to the chunk actually served.",
+  "evidence": "[LIVE]",
+  "proof": "`python -m unittest tests.test_chunk` → 3 failures. test_approved_block_uses_its_title: render_citation(\"затв.1/п.4\", ED, \"point\", block_title=\"ПОРЯДОК\") returns 'ПОРЯДОК п. 4 · ред. від 12.04.2026', expected 'ПОРЯДОК (затв. 1) п. 4 · ред. від 12.04.2026'. test_two_blocks_with_the_same_title_do_not_collide and test_number_is_rendered_even_for_a_lone_block fail the same way. The comment on lines 134-138 directly above the changed line still states the ordinal is 'load-bearing, not decoration' and 'Always rendered, even for a lone block', and PARSER_VERSION (line 73) still reads 't9-18.3fix  # fix: затв. number now in the citation' while the code reverts that fix."
+}

@@ -1,0 +1,10 @@
+{
+  "file": "pipelines/rag/retrieval.py",
+  "line": 310,
+  "severity": "critical",
+  "invariant": null,
+  "defect": "_ART_RE lost its `(?:-\\d+)?` suffix group, so a hyphenated article number is truncated to its first digit run and «ст.210-1» parses as «ст.210».",
+  "consequence": "The deterministic citation route — the one whose whole contract is 'a citation is an ID, never a relevance guess', and which stays SILENT rather than guess — now resolves a cited ст.N-M to a DIFFERENT article and serves that article's leaves as the authoritative #1 candidates. A user asking about ст.210-1 КУпАП (the military-registration fine; eval/data/smoke_retrieval.jsonl id 2 pins expected_article 'ст.210-1') is answered from ст.210.",
+  "evidence": "[LIVE]",
+  "proof": "`python -m unittest discover -s tests -q` → `FAILED (failures=1)`: test_retrieval_offline.ExactRoute.test_article_suffix_is_part_of_the_number, `AssertionError: 'ст.210' != 'ст.210-1'` (tests/test_retrieval_offline.py:144-145 also pins 'ст. 173-2' → 'ст.173-2'). End-to-end through the real route: with _TITLE_KEYS_CACHE patched to [], `R._citations(None, 'Яка санкція за ст. 210-1 КУпАП?')` → `[('8073-10', 'ст.210')]` and `R._parse_article(...)` → `'ст.210'`; exact_lookup then queries unit_path = 'ст.210' OR 'ст.210/%'. The comment directly above the line still documents the dropped case («ст.N-M»), retrieval.py:100 still discusses «283-2», and generate.py:40 `_ARTNUM_RE` still carries `(\\d+(?:-\\d+)?)`, so retrieval and the prose lint now disagree on what an article number is."
+}

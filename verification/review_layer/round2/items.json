@@ -1,0 +1,32 @@
+[
+  {
+    "item": "r2-item01",
+    "description": "Pull the LLM client's repeated usage-token read, thinking switch, strict-schema object pass and tool-call parsing into named helpers.",
+    "diff": "items/r2-item01.patch"
+  },
+  {
+    "item": "r2-item02",
+    "description": "Share one plain-r.txt guard and one source_checks reader/writer across the freshness probe, the seed-act backstop and the r.txt sampler, and name the daily run's per-source check and status classification.",
+    "diff": "items/r2-item02.patch"
+  },
+  {
+    "item": "r2-item03",
+    "description": "Collect fetch_texts' six loose run counters into a small _Tally dataclass, and give the КСУ snapshotter a named _record_snapshot step for its provenance row.",
+    "diff": "items/r2-item03.patch"
+  },
+  {
+    "item": "r2-item04",
+    "description": "Read every gold and golden JSONL file through one reader in retrieval_eval, and give the harness named helpers for the per-question tally, the persisted run and noise files, the stub result envelope and backend selection.",
+    "diff": "items/r2-item04.patch"
+  },
+  {
+    "item": "r2-item05",
+    "description": "Split both model pins into named assertions (bootstrap, model name, score drift, ordering) and give the embedding and lemma index builders a shared one-cell query helper and a batch-write step.",
+    "diff": "items/r2-item05.patch"
+  },
+  {
+    "item": "r2-item06",
+    "description": "Give the retriever one candidate-row builder and one citable-identity key instead of a copy per channel, and lift the cross-encoder rerank and the exact-first merge out of search() and the gate's verdict, retry turn and attempt record out of generate().",
+    "diff": "items/r2-item06.patch"
+  }
+]

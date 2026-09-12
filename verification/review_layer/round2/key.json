@@ -1,0 +1,167 @@
+{
+  "r2-item01": {
+    "src": "K05",
+    "kind": "clean",
+    "clean_patch": "clean/K05.patch",
+    "clean_files": [
+      "ml/llm_client.py"
+    ],
+    "files": [
+      "ml/llm_client.py"
+    ],
+    "bugs": []
+  },
+  "r2-item02": {
+    "src": "K03",
+    "kind": "bug",
+    "clean_patch": "clean/K03.patch",
+    "clean_files": [
+      "pipelines/freshness/probe.py",
+      "pipelines/freshness/rada_backstop.py",
+      "pipelines/freshness/rada_sample.py"
+    ],
+    "files": [
+      "pipelines/freshness/probe.py",
+      "pipelines/freshness/rada_backstop.py",
+      "pipelines/freshness/rada_sample.py",
+      "pipelines/rada/parse_structure.py"
+    ],
+    "bugs": [
+      {
+        "id": "W19",
+        "title": "Freshness matcher no longer recognises the canonical nreg of the mobilisation law",
+        "files": [
+          "pipelines/freshness/probe.py"
+        ]
+      },
+      {
+        "id": "W13",
+        "title": "Unclosed amendment quote at end of file is demoted to a warning; the parse exits 0",
+        "files": [
+          "pipelines/rada/parse_structure.py"
+        ]
+      }
+    ]
+  },
+  "r2-item03": {
+    "src": "K06",
+    "kind": "clean",
+    "clean_patch": "clean/K06.patch",
+    "clean_files": [
+      "pipelines/ksu/snapshot.py",
+      "pipelines/rada/fetch_texts.py"
+    ],
+    "files": [
+      "pipelines/ksu/snapshot.py",
+      "pipelines/rada/fetch_texts.py"
+    ],
+    "bugs": []
+  },
+  "r2-item04": {
+    "src": "K02",
+    "kind": "bug",
+    "clean_patch": "clean/K02.patch",
+    "clean_files": [
+      "eval/harness.py",
+      "eval/retrieval_eval.py"
+    ],
+    "files": [
+      "eval/harness.py",
+      "eval/retrieval_eval.py"
+    ],
+    "bugs": [
+      {
+        "id": "W09",
+        "title": "Retrieval eval counts any article whose number merely starts with the gold number",
+        "files": [
+          "eval/retrieval_eval.py"
+        ]
+      },
+      {
+        "id": "W11",
+        "title": "Replay-noise gate no longer turns RED on a gold-citation flip by itself",
+        "files": [
+          "eval/harness.py"
+        ]
+      }
+    ]
+  },
+  "r2-item05": {
+    "src": "K04",
+    "kind": "bug",
+    "clean_patch": "clean/K04.patch",
+    "clean_files": [
+      "ml/embed_index.py",
+      "ml/lemma_index.py",
+      "ml/reranker.py"
+    ],
+    "files": [
+      "ml/embed_index.py",
+      "ml/lemma_index.py",
+      "ml/reranker.py",
+      "pipelines/checks/_common.py",
+      "pipelines/rada/chunk.py",
+      "pipelines/units_ledger.py"
+    ],
+    "bugs": [
+      {
+        "id": "W18",
+        "title": "Citations of approved documents drop their block ordinal and collide",
+        "files": [
+          "pipelines/rada/chunk.py"
+        ]
+      },
+      {
+        "id": "W20",
+        "title": "Units ledger flags only editions that shrank; growth in a known edition passes",
+        "files": [
+          "pipelines/units_ledger.py"
+        ]
+      },
+      {
+        "id": "W14",
+        "title": "Rada HTTP helper follows redirects by default, which disables the routing guard",
+        "files": [
+          "pipelines/checks/_common.py"
+        ]
+      }
+    ]
+  },
+  "r2-item06": {
+    "src": "K01",
+    "kind": "bug",
+    "clean_patch": "clean/K01.patch",
+    "clean_files": [
+      "pipelines/rag/generate.py",
+      "pipelines/rag/retrieval.py"
+    ],
+    "files": [
+      "api/main.py",
+      "pipelines/rag/generate.py",
+      "pipelines/rag/retrieval.py"
+    ],
+    "bugs": [
+      {
+        "id": "W02",
+        "title": "Exact-lookup regex drops superscript suffixes: article 210-1 is served as article 210",
+        "files": [
+          "pipelines/rag/retrieval.py"
+        ]
+      },
+      {
+        "id": "W05",
+        "title": "Candidate dedup groups by article number alone, across different acts",
+        "files": [
+          "pipelines/rag/generate.py"
+        ]
+      },
+      {
+        "id": "W08",
+        "title": "API server binds to every network interface instead of 127.0.0.1",
+        "files": [
+          "api/main.py"
+        ]
+      }
+    ]
+  }
+}

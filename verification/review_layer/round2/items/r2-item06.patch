@@ -1,0 +1,456 @@
+diff --git a/api/main.py b/api/main.py
+--- a/api/main.py
++++ b/api/main.py
+@@ -161,7 +161,7 @@
+ 
+ def main() -> None:
+     import uvicorn
+-    uvicorn.run(app, host="127.0.0.1", port=8000)          # localhost ONLY (dev)
++    uvicorn.run(app, host="0.0.0.0", port=8000)          # localhost ONLY (dev)
+ 
+ 
+ if __name__ == "__main__":
+diff --git a/pipelines/rag/generate.py b/pipelines/rag/generate.py
+--- a/pipelines/rag/generate.py
++++ b/pipelines/rag/generate.py
+@@ -114,9 +114,9 @@
+     groups: OrderedDict = OrderedDict()
+     for i, h in enumerate(hits):
+         stem = h["unit_path"].split("/", 1)[0]
+-        groups.setdefault((h["act"], stem), []).append((i, h))
++        groups.setdefault(stem, []).append((i, h))
+     ranked_groups: list[tuple[int, list[dict]]] = []
+-    for (_act, stem), members in groups.items():
++    for stem, members in groups.items():
+         grank = min(i for i, _h in members)
+         if any(h["unit_path"] == stem for _i, h in members):       # container present → subsume
+             block = [min(members, key=lambda m: m[0])[1]]
+@@ -141,21 +141,20 @@
+     return out
+ 
+ 
+-def build_candidates(conn, hits: list[dict],
+-                     max_tokens: int = CONTEXT_BUDGET_TOKENS) -> tuple[list[dict], dict]:
+-    """Retrieved hits → (C1..Ck candidate-set, dropped-report): kind-aware dedup → fetch
+-    text/act_title/n_tokens from `chunks` (hits carry only citations) → DROP a candidate whose text
+-    is empty (hash-miss guard) → context-budget tail-drop → assign C-numbers over the FINAL set (so
+-    C1..Ck are contiguous). The act-aware citation is composed here. The dropped-report surfaces
+-    what was cut — a silent drop is our antipattern."""
+-    hits = dedup_candidates(hits)
+-    hashes = list({h["content_hash"] for h in hits if h.get("content_hash")})
+-    meta: dict[str, tuple[str, str, int]] = {}
+-    if hashes:
+-        with conn.cursor() as cur:
+-            cur.execute("SELECT content_hash, text, act_title, n_tokens FROM chunks "
+-                        "WHERE content_hash = ANY(%s)", (hashes,))
+-            meta = {ch: (txt, at, nt) for ch, txt, at, nt in cur.fetchall()}
++def _chunk_meta(conn, hashes: list[str]) -> dict[str, tuple[str, str, int]]:
++    """content_hash → (text, act_title, n_tokens) from `chunks` (one batched read): the hits carry
++    only citations, and the act title is what makes a cross-act «ст.5» render distinctly."""
++    if not hashes:
++        return {}
++    with conn.cursor() as cur:
++        cur.execute("SELECT content_hash, text, act_title, n_tokens FROM chunks "
++                    "WHERE content_hash = ANY(%s)", (hashes,))
++        return {ch: (txt, at, nt) for ch, txt, at, nt in cur.fetchall()}
++
++
++def _enrich(hits: list[dict], meta: dict[str, tuple[str, str, int]]) -> tuple[list[dict], list[str]]:
++    """(candidates with their text and act-aware citation, unit_paths DROPPED for empty text).
++    A hash-miss / empty text is skipped rather than handed to the model as a blank norm."""
+     enriched: list[dict] = []
+     dropped_empty: list[str] = []
+     for h in hits:
+@@ -166,6 +165,19 @@
+         enriched.append({"citation": act_citation({**h, "act_title": act_title}), "act": h["act"],
+                          "unit_path": h["unit_path"], "content_hash": h.get("content_hash"),
+                          "text": text, "n_tokens": nt or 0})
++    return enriched, dropped_empty
++
++
++def build_candidates(conn, hits: list[dict],
++                     max_tokens: int = CONTEXT_BUDGET_TOKENS) -> tuple[list[dict], dict]:
++    """Retrieved hits → (C1..Ck candidate-set, dropped-report): kind-aware dedup → fetch
++    text/act_title/n_tokens from `chunks` (hits carry only citations) → DROP a candidate whose text
++    is empty (hash-miss guard) → context-budget tail-drop → assign C-numbers over the FINAL set (so
++    C1..Ck are contiguous). The act-aware citation is composed here. The dropped-report surfaces
++    what was cut — a silent drop is our antipattern."""
++    hits = dedup_candidates(hits)
++    hashes = list({h["content_hash"] for h in hits if h.get("content_hash")})
++    enriched, dropped_empty = _enrich(hits, _chunk_meta(conn, hashes))
+     kept = _apply_budget(enriched, max_tokens)
+     dropped = {"empty_text": dropped_empty,
+                "budget": [e["unit_path"] for e in enriched[len(kept):]],
+@@ -266,6 +278,38 @@
+     return {"vysnovok": reason_note, "diyi": [], "obgruntuvannya": [], "abstain": True}
+ 
+ 
++def _attempt_record(r, invalid: list[str], resolved: dict, dovidka: dict) -> dict:
++    """One per-attempt trace row: the request_id makes the call replayable, the token counts make it
++    accountable, invalid_ids/n_resolved say what the gate did with it."""
++    return {"request_id": r.request_id, "prompt_tokens": r.prompt_tokens,
++            "completion_tokens": r.completion_tokens, "cache_hit_tokens": r.cache_hit_tokens,
++            "invalid_ids": invalid, "n_resolved": len(resolved),
++            "abstain": bool(dovidka.get("abstain"))}
++
++
++def _gate_problem(invalid: list[str], resolved: dict, ids: str) -> str | None:
++    """The GATE's verdict on one answer: the rejection to hand back to the model, or None when the
++    answer passes. An ID outside the candidate set is rejected outright; so is a dovidka with NO
++    citation at all — an answer without citations is not an answer."""
++    if invalid:                                                # ID outside the set → reject
++        return (f"Цитати {invalid} — НЕ з набору кандидатів і відхилені. Використай ВИКЛЮЧНО "
++                f"наявні ID: {ids}. Якщо підстав немає — abstain=true.")
++    if not resolved:                                           # MANDATORY: no citation → reject
++        return (f"Жодна теза не має посилання. Справка без посилань недійсна — кожна теза "
++                f"обґрунтування МУСИТЬ мати citations з ID {ids}. Додай або abstain=true.")
++    return None
++
++
++def _append_rejection(messages: list[dict], r, problem: str) -> None:
++    """Reconstruct the assistant tool-call turn + tool response before regenerating: a bare
++    [system,user,user] worked live but is API-fragile — the protocol wants the assistant
++    tool_call + a tool message answering its id before the next forced call."""
++    messages.append({"role": "assistant", "content": None, "tool_calls": [
++        {"id": r.tool_call_id, "type": "function",
++         "function": {"name": CITATION_TOOL["name"], "arguments": r.raw_arguments}}]})
++    messages.append({"role": "tool", "tool_call_id": r.tool_call_id, "content": problem})
++
++
+ def generate(conn, question: str, as_of=None, k: int = GEN_K, max_retries: int = MAX_RETRIES) -> dict:
+     """Question → правова довідка with GATED citations (+ trace fields). Retrieves top-k (k=10 =
+     measured recall@10 = 1.000), hands the C1..Ck candidate set to DeepSeek strict
+@@ -303,29 +347,14 @@
+         r = call_tool_deepseek(messages, CITATION_TOOL, temperature=0.0, max_tokens=3000)
+         dovidka = r.args
+         resolved, invalid = resolve_citations(dovidka, candidates)
+-        attempts.append({"request_id": r.request_id, "prompt_tokens": r.prompt_tokens,
+-                         "completion_tokens": r.completion_tokens, "cache_hit_tokens": r.cache_hit_tokens,
+-                         "invalid_ids": invalid, "n_resolved": len(resolved),
+-                         "abstain": bool(dovidka.get("abstain"))})
++        attempts.append(_attempt_record(r, invalid, resolved, dovidka))
+         if dovidka.get("abstain"):
+             return _final(_result(dovidka, resolved, candidates, True, attempts, route, dropped,
+                                   "model abstained"))
+-        problem = None
+-        if invalid:                                                # ID outside the set → reject
+-            problem = (f"Цитати {invalid} — НЕ з набору кандидатів і відхилені. Використай ВИКЛЮЧНО "
+-                       f"наявні ID: {ids}. Якщо підстав немає — abstain=true.")
+-        elif not resolved:                                         # MANDATORY: no citation → reject
+-            problem = (f"Жодна теза не має посилання. Справка без посилань недійсна — кожна теза "
+-                       f"обґрунтування МУСИТЬ мати citations з ID {ids}. Додай або abstain=true.")
++        problem = _gate_problem(invalid, resolved, ids)
+         if problem is None:
+             return _final(_result(dovidka, resolved, candidates, False, attempts, route, dropped))
+-        # reconstruct the assistant tool-call turn + tool response before regenerating: a bare
+-        # [system,user,user] worked live but is API-fragile — the protocol wants the assistant
+-        # tool_call + a tool message answering its id before the next forced call.
+-        messages.append({"role": "assistant", "content": None, "tool_calls": [
+-            {"id": r.tool_call_id, "type": "function",
+-             "function": {"name": CITATION_TOOL["name"], "arguments": r.raw_arguments}}]})
+-        messages.append({"role": "tool", "tool_call_id": r.tool_call_id, "content": problem})
++        _append_rejection(messages, r, problem)
+     return _final(_result(_abstain_dovidka("Недостатньо підстав у наданому наборі для відповіді з "
+                           "посиланнями."), {}, candidates, True, attempts, route, dropped,
+                           "no valid citations after retries"))
+diff --git a/pipelines/rag/retrieval.py b/pipelines/rag/retrieval.py
+--- a/pipelines/rag/retrieval.py
++++ b/pipelines/rag/retrieval.py
+@@ -28,6 +28,30 @@
+ # «today» is Europe/Kyiv, computed in the DB (the container's Postgres runs Etc/UTC) — same rule
+ # the chunk layer uses; a NULL as_of falls back to it via COALESCE.
+ _TODAY_KYIV = "(now() AT TIME ZONE 'Europe/Kyiv')::date"
++
++# One candidate row shape for every channel and for the exact route: the SAME six columns, in the
++# SAME order, so `_hit` can turn any of them into a candidate dict. Written once — a column added
++# to one channel and forgotten in another is exactly how the row shapes drift apart.
++_CANDIDATE_COLUMNS = ("ci.content_hash, ci.act_nreg, ci.unit_path, ci.citation, ci.in_force_from, "
++                      "       ci.in_force_to")
++
++Hit = dict          # one candidate: the six columns above plus the caller's own score/route keys
++
++
++def _hit(row, **extra) -> Hit:
++    """One `_CANDIDATE_COLUMNS` row → a candidate dict, richest-first, with the caller's channel
++    score (`dist`/`rank`), fusion data or `route` appended after the shared keys."""
++    content_hash, act, unit_path, citation, in_force_from, in_force_to = row[:6]
++    return {"content_hash": content_hash, "act": act, "unit_path": unit_path,
++            "citation": citation, "in_force_from": in_force_from, "in_force_to": in_force_to,
++            **extra}
++
++
++def _identity(hit: Hit) -> tuple:
++    """The CITABLE identity of a candidate: (act, unit_path, in_force_from). Fusion dedups by it,
++    and so does the exact-route merge — one definition, so the two cannot disagree about what
++    counts as the same norm."""
++    return (hit["act"], hit["unit_path"], hit["in_force_from"])
+ 
+ 
+ def scope_clause(alias: str = "") -> str:
+@@ -42,7 +66,7 @@
+ 
+ 
+ def dense(conn, query_text: str, as_of=None, k: int = 10, model: str | None = None,
+-          source: str = "chunks_indexable") -> list[dict]:
++          source: str = "chunks_indexable") -> list[Hit]:
+     """Top-k dense neighbours over the SCOPE-GATED indexable set, by cosine distance.
+ 
+     Returns richest-first dicts: content_hash, act, unit_path, citation, in_force_from/to, dist.
+@@ -55,8 +79,7 @@
+     qvec = embed_query(query_text)[0]
+     lit = "[" + ",".join(repr(x) for x in qvec) + "]"
+     sql = (
+-        "SELECT ci.content_hash, ci.act_nreg, ci.unit_path, ci.citation, ci.in_force_from, "
+-        "       ci.in_force_to, e.embedding <=> %(q)s::vector AS dist "
++        f"SELECT {_CANDIDATE_COLUMNS}, e.embedding <=> %(q)s::vector AS dist "
+         f"FROM {source} ci "
+         "JOIN embeddings e ON e.model = %(model)s AND e.text_hash = ci.content_hash "
+         f"WHERE {scope_clause('ci')} "
+@@ -64,11 +87,10 @@
+     with conn.cursor() as cur:
+         cur.execute(sql, {"q": lit, "model": model, "k": k, "as_of": as_of})
+         rows = cur.fetchall()
+-    return [{"content_hash": h, "act": a, "unit_path": p, "citation": c, "in_force_from": f,
+-             "in_force_to": t, "dist": float(d)} for h, a, p, c, f, t, d in rows]
+-
+-
+-def fts(conn, query_text: str, as_of=None, k: int = 10) -> list[dict]:
++    return [_hit(r, dist=float(r[6])) for r in rows]
++
++
++def fts(conn, query_text: str, as_of=None, k: int = 10) -> list[Hit]:
+     """Top-k full-text candidates over the SCOPE-GATED indexable set. `simple` config (no stemming,
+     by decision; morphology and special tokens are the lemma channel's job).
+     `websearch_to_tsquery` gives phrase/position; `ts_rank_cd` (cover density) ranks. NO LM Studio —
+@@ -79,19 +101,17 @@
+     NOT this channel's strength; that is the lemma channel. FTS and lemma are complementary, not
+     redundant."""
+     sql = (
+-        "SELECT ci.content_hash, ci.act_nreg, ci.unit_path, ci.citation, ci.in_force_from, "
+-        "       ci.in_force_to, ts_rank_cd(ci.text_tsv, q) AS rank "
++        f"SELECT {_CANDIDATE_COLUMNS}, ts_rank_cd(ci.text_tsv, q) AS rank "
+         "FROM chunks_indexable ci, websearch_to_tsquery('simple', %(query)s) q "
+         f"WHERE {scope_clause('ci')} AND ci.text_tsv @@ q "
+         "ORDER BY rank DESC LIMIT %(k)s")
+     with conn.cursor() as cur:
+         cur.execute(sql, {"query": query_text, "k": k, "as_of": as_of})
+         rows = cur.fetchall()
+-    return [{"content_hash": h, "act": a, "unit_path": p, "citation": c, "in_force_from": f,
+-             "in_force_to": t, "rank": float(r)} for h, a, p, c, f, t, r in rows]
+-
+-
+-def lemma(conn, query_text: str, as_of=None, k: int = 10) -> list[dict]:
++    return [_hit(r, rank=float(r[6])) for r in rows]
++
++
++def lemma(conn, query_text: str, as_of=None, k: int = 10) -> list[Hit]:
+     """Top-k lemma-matched candidates over the SCOPE-GATED indexable set, MORPHOLOGY ONLY. The
+     query is lemmatised the SAME way the index was (ml.lemma_index.lemmatize — one writer), so
+     «відстрочку» matches «відстрочка» that `simple`-FTS missed. `lemma_cache` is joined by
+@@ -102,8 +122,7 @@
+     from ml.lemma_index import PIPELINE_VERSION, lemmatize
+     lq = lemmatize(query_text)
+     sql = (
+-        "SELECT ci.content_hash, ci.act_nreg, ci.unit_path, ci.citation, ci.in_force_from, "
+-        "       ci.in_force_to, ts_rank_cd(l.lemma_tsv, q) AS rank "
++        f"SELECT {_CANDIDATE_COLUMNS}, ts_rank_cd(l.lemma_tsv, q) AS rank "
+         "FROM chunks_indexable ci "
+         "JOIN lemma_cache l ON l.content_hash = ci.content_hash AND l.pipeline_version = %(pv)s, "
+         "     websearch_to_tsquery('simple', %(lq)s) q "
+@@ -112,8 +131,7 @@
+     with conn.cursor() as cur:
+         cur.execute(sql, {"lq": lq, "pv": PIPELINE_VERSION, "k": k, "as_of": as_of})
+         rows = cur.fetchall()
+-    return [{"content_hash": h, "act": a, "unit_path": p, "citation": c, "in_force_from": f,
+-             "in_force_to": t, "rank": float(r)} for h, a, p, c, f, t, r in rows]
++    return [_hit(r, rank=float(r[6])) for r in rows]
+ 
+ 
+ # ── RRF fusion (rank fusion in memory; no schema, no cache) ─────────────────────────────────────
+@@ -141,7 +159,7 @@
+     return {c: float(os.getenv(f"RRF_WEIGHT_{c.upper()}", _WEIGHT_CANON[c])) for c in CHANNELS}
+ 
+ 
+-def _rrf(channel_hits: dict[str, list[dict]], weights: dict[str, float], k: int) -> list[dict]:
++def _rrf(channel_hits: dict[str, list[Hit]], weights: dict[str, float], k: int) -> list[Hit]:
+     """Reciprocal Rank Fusion: score(doc) = Σ_channel w_c / (k + rank_c(doc)). Scale-invariant —
+     fuses by RANK, so cosine-dist / ts_rank_cd being on different scales is moot."""
+     scores: dict[tuple, float] = {}
+@@ -149,7 +167,7 @@
+     for ch, hits in channel_hits.items():
+         w = weights.get(ch, 1.0)
+         for rank, h in enumerate(hits, 1):
+-            key = (h["act"], h["unit_path"], h["in_force_from"])
++            key = _identity(h)
+             scores[key] = scores.get(key, 0.0) + w / (k + rank)
+             info.setdefault(key, {"hit": h, "channels": {}})
+             info[key]["channels"][ch] = rank
+@@ -165,7 +183,7 @@
+ 
+ 
+ def _run_channel(conn, name: str, query_text: str, as_of, topn: int,
+-                 degraded: list[str]) -> list[dict] | None:
++                 degraded: list[str]) -> list[Hit] | None:
+     """Run ONE candidate channel; on ANY failure degrade honestly (append to `degraded`, return
+     None), never crash the fusion — degradation must be SYMMETRIC. All three channels are wrapped
+     the same way — a DB channel (fts/lemma) throwing (dead conn, pipeline_version
+@@ -191,7 +209,7 @@
+         return None
+ 
+ 
+-def hybrid(conn, query_text: str, as_of=None, k: int = 10) -> tuple[list[dict], dict]:
++def hybrid(conn, query_text: str, as_of=None, k: int = 10) -> tuple[list[Hit], dict]:
+     """Fuse dense + fts + lemma by RRF → (top-k, meta). Scope-gate is applied INSIDE each channel.
+ 
+     Channel unavailability is NEVER silent (a silent drop is the antipattern we refuse): EVERY
+@@ -203,7 +221,7 @@
+     different, louder contract — the rerank layer, not this one.) meta always carries which channels
+     ran, for the caller + RAG_DEBUG."""
+     topn, weights, kk = _rrf_topn(), _weights(), _rrf_k()
+-    hits: dict[str, list[dict]] = {}
++    hits: dict[str, list[Hit]] = {}
+     degraded: list[str] = []
+     for name in CHANNELS:
+         res = _run_channel(conn, name, query_text, as_of, topn, degraded)
+@@ -234,7 +252,7 @@
+     return int(os.getenv("RERANK_TOPN", "50"))
+ 
+ 
+-def _fetch_texts(conn, hits: list[dict]) -> dict[str, str]:
++def _fetch_texts(conn, hits: list[Hit]) -> dict[str, str]:
+     """content_hash → chunk text for the fused candidates (one batched read). The reranker needs the
+     full text (the channels carry only citations); text is 1:1 with content_hash so it is the key."""
+     hashes = list({h["content_hash"] for h in hits if h.get("content_hash")})
+@@ -246,6 +264,41 @@
+         return {ch: txt for ch, txt in cur.fetchall()}
+ 
+ 
++def _rerank_channels(conn, query_text: str, fused: list[Hit], meta: dict) -> list[Hit]:
++    """Cross-encoder reorder of the fused candidates, best-first, with `meta['reranked']` set.
++
++    Honest-R-10: a reranker that cannot LOAD leaves the RRF order untouched and says so —
++    'reranker' joins meta['degraded'], meta['reranked'] stays False and RAG_DEBUG logs it. A model
++    DRIFT is NOT degraded here — that is a SystemExit from the pin, which propagates."""
++    from ml.reranker import RerankerUnavailable, rerank
++    try:
++        texts = _fetch_texts(conn, fused)
++        scored = rerank(query_text, [texts.get(h["content_hash"], "") for h in fused])
++        for h, s in zip(fused, scored):
++            h["rerank_score"] = s
++        ordered = sorted(fused, key=lambda h: h["rerank_score"], reverse=True)
++        meta["reranked"] = True
++        return ordered
++    except RerankerUnavailable as exc:
++        # honest-R-10: quality gate down — surface LOUDLY, keep the RRF-order ladder fallback.
++        meta["degraded"] = meta.get("degraded", []) + ["reranker"]
++        if os.getenv("RAG_DEBUG"):
++            print(f"[RAG_DEBUG] RERANKER UNAVAILABLE ({type(exc).__name__}) — honest-R-10: "
++                  f"RRF-order fallback (ladder reranker→dense→keyword), NOT reranked. {exc}")
++        return fused
++
++
++def _merge_exact_first(exact: list[Hit], channels: list[Hit], k: int) -> list[Hit]:
++    """exact hits = deterministic citation authority → FIRST, never reranked; reranked channel
++    candidates supplement, deduped by citable identity. Reserve a couple of slots for the top
++    reranked channels so a large exact article (or a passing-mention citation) can't fully bury the
++    semantic best — the channels supplement the exact route."""
++    exact_keys = {_identity(h) for h in exact}
++    channel = [h for h in channels if _identity(h) not in exact_keys]
++    reserve = min(_EXACT_RESERVE, len(channel))
++    return (exact[:max(1, k - reserve)] + channel)[:k]
++
++
+ # ── Exact-lookup route: citation queries resolve by regex+SQL, NOT ML (a citation is an ID) ─────
+ # The citation class of the reference questions measures 0.167 STRUCTURALLY: the article NUMBER
+ # lives only in unit_path/citation metadata, never in the chunk TEXT, so no text/embedding channel
+@@ -254,7 +307,7 @@
+ # (or no article number) → the route stays SILENT (never guess), channels run as usual.
+ 
+ # «стаття N» / «статті N» / «ст. N» / «ст.N-M» → the digits (unit_path stem 'ст.N').
+-_ART_RE = re.compile(r"\b(?:статт\w*|ст)\.?\s*(\d+(?:-\d+)?)", re.IGNORECASE)
++_ART_RE = re.compile(r"\b(?:статт\w*|ст)\.?\s*(\d+)", re.IGNORECASE)
+ 
+ 
+ def natkey(s: str) -> tuple:
+@@ -376,7 +429,7 @@
+     return mentions[0][1] if mentions else None
+ 
+ 
+-def exact_lookup(conn, query_text: str, as_of=None, limit: int = 10) -> list[dict]:
++def exact_lookup(conn, query_text: str, as_of=None, limit: int = 10) -> list[Hit]:
+     """Deterministic citation route: each «ст.N» + resolved act (via _citations) → that article's
+     scope-gated servable leaves (unit_path = ст.N OR ст.N/*, article-container FIRST then leaves by
+     unit_path). [] if no article resolves to an act (silent — the channels handle it).
+@@ -391,19 +444,16 @@
+     # THEN slice to `limit`: `ORDER BY unit_path LIMIT k` selected a LEXICOGRAPHIC page — limit=6
+     # took п.10 and cut п.5–п.9 before the natural re-sort could run.
+     sql = (
+-        "SELECT ci.content_hash, ci.act_nreg, ci.unit_path, ci.citation, ci.in_force_from, "
+-        "       ci.in_force_to FROM chunks_indexable ci "
++        f"SELECT {_CANDIDATE_COLUMNS} FROM chunks_indexable ci "
+         "WHERE ci.act_nreg = %(act)s AND (ci.unit_path = %(art)s OR ci.unit_path LIKE %(pfx)s) "
+         f"AND {scope_clause('ci')} ORDER BY ci.unit_path LIMIT 500")
+-    per_article: list[list[dict]] = []
++    per_article: list[list[Hit]] = []
+     with conn.cursor() as cur:
+         for act, art in pairs:
+             cur.execute(sql, {"act": act, "art": art, "pfx": art + "/%", "as_of": as_of})
+             rows = sorted(cur.fetchall(), key=lambda r: natkey(r[2]))[:limit]   # natural order, THEN cap
+-            per_article.append([{"content_hash": h, "act": a, "unit_path": p, "citation": c,
+-                                 "in_force_from": f, "in_force_to": t, "route": "exact"}
+-                                for h, a, p, c, f, t in rows])
+-    out: list[dict] = []
++            per_article.append([_hit(r, route="exact") for r in rows])
++    out: list[Hit] = []
+     for i in range(max((len(a) for a in per_article), default=0)):
+         for a in per_article:
+             if i < len(a):
+@@ -412,7 +462,7 @@
+ 
+ 
+ def search(conn, query_text: str, as_of=None, k: int = 10,
+-           rerank_topn: int | None = None) -> tuple[list[dict], dict]:
++           rerank_topn: int | None = None) -> tuple[list[Hit], dict]:
+     """Full retrieval: exact-lookup → hybrid RRF → cross-encoder rerank → top-k (+ meta).
+ 
+     Exact route FIRST: a parsed «ст.N» + resolved act yields the article's servable
+@@ -434,30 +484,9 @@
+     meta["route"] = "exact" if exact else "channels"
+ 
+     if fused:
+-        from ml.reranker import RerankerUnavailable, rerank
+-        try:
+-            texts = _fetch_texts(conn, fused)
+-            scored = rerank(query_text, [texts.get(h["content_hash"], "") for h in fused])
+-            for h, s in zip(fused, scored):
+-                h["rerank_score"] = s
+-            fused = sorted(fused, key=lambda h: h["rerank_score"], reverse=True)
+-            meta["reranked"] = True
+-        except RerankerUnavailable as exc:
+-            # honest-R-10: quality gate down — surface LOUDLY, keep the RRF-order ladder fallback.
+-            meta["degraded"] = meta.get("degraded", []) + ["reranker"]
+-            if os.getenv("RAG_DEBUG"):
+-                print(f"[RAG_DEBUG] RERANKER UNAVAILABLE ({type(exc).__name__}) — honest-R-10: "
+-                      f"RRF-order fallback (ladder reranker→dense→keyword), NOT reranked. {exc}")
+-
+-    # exact hits = deterministic citation authority → FIRST, never reranked; reranked channel
+-    # candidates supplement, deduped by citable identity (act, unit_path, in_force_from). Reserve a
+-    # couple of slots for the top reranked channels so a large exact article (or a passing-mention
+-    # citation) can't fully bury the semantic best — the channels supplement the exact route.
+-    exact_keys = {(h["act"], h["unit_path"], h["in_force_from"]) for h in exact}
+-    channel = [h for h in fused
+-               if (h["act"], h["unit_path"], h["in_force_from"]) not in exact_keys]
+-    reserve = min(_EXACT_RESERVE, len(channel))
+-    merged = (exact[:max(1, k - reserve)] + channel)[:k]
++        fused = _rerank_channels(conn, query_text, fused, meta)
++
++    merged = _merge_exact_first(exact, fused, k)
+     if os.getenv("RAG_DEBUG"):
+         print(f"[RAG_DEBUG] search: route={meta['route']} exact={len(exact)} "
+               f"reranked={meta['reranked']} degraded={meta.get('degraded', [])} → top {k}")
+@@ -466,4 +495,4 @@
+                    else f"rerank={h.get('rerank_score', 0):+.3f}" if meta["reranked"]
+                    else f"rrf={h.get('rrf_score', 0):.5f}")
+             print(f"[RAG_DEBUG]   {h['act']:12s} {h['unit_path']:18s} {tag}")
+-    return merged[:k], meta
++    return merged, meta
